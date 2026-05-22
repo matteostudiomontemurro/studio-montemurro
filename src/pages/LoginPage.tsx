@@ -20,30 +20,31 @@ export default function LoginPage() {
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
-      background: 'radial-gradient(ellipse at 60% 0%, rgba(83,74,183,0.2) 0%, transparent 60%), var(--bg)',
+      background: 'linear-gradient(160deg, #f5f7fa 0%, #eef1f5 100%)',
       padding: '24px'
     }}>
-      {/* Logo area */}
-      <div style={{ marginBottom: '40px', textAlign: 'center' }}>
-        <div style={{
-          width: 64, height: 64, borderRadius: 18,
-          background: 'linear-gradient(135deg, var(--primary), var(--accent))',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 28, fontWeight: 700, color: 'white',
-          margin: '0 auto 16px', boxShadow: 'var(--shadow-primary)'
-        }}>SM</div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>Studio Montemurro</h1>
-        <p style={{ color: 'var(--text2)', fontSize: 14, marginTop: 4 }}>Il tuo spazio fiscale personale</p>
+      {/* Logo esteso */}
+      <div style={{ marginBottom: '36px', textAlign: 'center' }}>
+        <img
+          src="/logo-esteso.png"
+          alt="Montemurro Studio Tributario"
+          style={{ height: 80, maxWidth: 320, objectFit: 'contain' }}
+        />
       </div>
 
       {/* Form */}
       <form onSubmit={handleLogin} style={{
         width: '100%', maxWidth: 360,
-        background: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
-        padding: '28px'
+        background: 'white',
+        border: '1px solid rgba(7,36,62,0.1)',
+        borderRadius: 20,
+        padding: '28px',
+        boxShadow: '0 4px 32px rgba(7,36,62,0.1)'
       }}>
+        <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 20, textAlign: 'center' }}>
+          Il tuo spazio fiscale personale
+        </p>
+
         <div className="form-row">
           <label>Email</label>
           <input
@@ -67,7 +68,7 @@ export default function LoginPage() {
 
         {error && (
           <div style={{
-            background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)',
+            background: 'rgba(231,76,60,0.08)', border: '1px solid rgba(231,76,60,0.2)',
             borderRadius: 'var(--radius-sm)', padding: '10px 14px',
             color: 'var(--danger)', fontSize: 13, marginBottom: 16
           }}>{error}</div>
@@ -75,12 +76,12 @@ export default function LoginPage() {
 
         <button type="submit" className="btn btn-primary" disabled={loading}
           style={{ width: '100%', justifyContent: 'center', padding: '13px' }}>
-          {loading ? <span className="spinner" /> : 'Accedi'}
+          {loading ? <span className="spinner" style={{ borderTopColor: 'white' }} /> : 'Accedi'}
         </button>
       </form>
 
       <p style={{ color: 'var(--text3)', fontSize: 12, marginTop: 32 }}>
-        © {new Date().getFullYear()} Studio Montemurro · Tutti i diritti riservati
+        © {new Date().getFullYear()} Montemurro Studio Tributario
       </p>
     </div>
   )

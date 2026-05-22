@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase, Cliente, Fattura, Documento } from '../lib/supabase'
-import { Users, Plus, ChevronRight, LogOut, Settings, ArrowLeft, Upload } from 'lucide-react'
+import { Users, Plus, ChevronRight, LogOut, Settings, ArrowLeft } from 'lucide-react'
 import FattureTab from '../components/FattureTab'
 import DocumentiTab from '../components/DocumentiTab'
 
@@ -64,7 +64,6 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
       aliquota_imposta: form.aliquota_imposta,
       contributi_inps_fissi: form.contributi_inps_fissi,
     }).eq('id', selected!.id)
-    // Refresh
     const { data } = await supabase.from('clienti').select('*').eq('id', selected!.id).single()
     if (data) { setSelected(data); setForm(data) }
     loadClienti()
@@ -74,26 +73,24 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
   // DETAIL VIEW
   if (selected) {
     return (
-      <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
-          <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text2)', display: 'flex', padding: 4 }}>
+      <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: 'var(--primary)', borderBottom: '1px solid var(--border)' }}>
+          <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', display: 'flex', padding: 4 }}>
             <ArrowLeft size={20} />
           </button>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{selected.nome} {selected.cognome}</div>
-            <div style={{ fontSize: 12, color: 'var(--text3)' }}>{selected.email}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'white' }}>{selected.nome} {selected.cognome}</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{selected.email}</div>
           </div>
         </div>
 
-        {/* Sub tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'white' }}>
           {(['parametri', 'fatture', 'documenti'] as const).map(t => (
             <button key={t} onClick={() => setActiveTab(t)} style={{
               flex: 1, padding: '10px', background: 'transparent', border: 'none',
               borderBottom: `2px solid ${activeTab === t ? 'var(--primary)' : 'transparent'}`,
-              color: activeTab === t ? 'var(--primary-light)' : 'var(--text3)',
-              cursor: 'pointer', fontSize: 13, fontFamily: 'var(--font)', fontWeight: 500,
+              color: activeTab === t ? 'var(--primary)' : 'var(--text3)',
+              cursor: 'pointer', fontSize: 13, fontFamily: 'var(--font)', fontWeight: activeTab === t ? 600 : 500,
               marginBottom: -1, textTransform: 'capitalize'
             }}>{t}</button>
           ))}
@@ -133,34 +130,27 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
 
   // LIST VIEW
   return (
-    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
-      {/* Header */}
-      <div style={{ padding: '16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--primary), var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>SM</div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>Studio Montemurro</div>
-              <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>Pannello Admin</div>
-            </div>
-          </div>
-          <button className="btn btn-ghost" onClick={onLogout} style={{ padding: '7px 10px' }}>
-            <LogOut size={15} />
-          </button>
+    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg2)' }}>
+      <div style={{ padding: '10px 16px', background: 'var(--primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <img src="/logo-icona.png" alt="Logo" style={{ height: 36, width: 36, objectFit: 'contain', borderRadius: 6 }} />
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'white' }}>Montemurro Studio Tributario</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Pannello Admin</div>
         </div>
+        <button className="btn btn-ghost" onClick={onLogout} style={{ padding: '7px 10px', border: 'none', color: 'rgba(255,255,255,0.7)' }}>
+          <LogOut size={16} />
+        </button>
       </div>
 
-      {/* Actions */}
-      <div style={{ padding: '12px 16px', display: 'flex', gap: 8, borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-        <button className="btn btn-primary" onClick={() => setShowNew(true)} style={{ flex: 1, justifyContent: 'center' }}>
+      <div style={{ padding: '12px 16px', background: 'white', borderBottom: '1px solid var(--border)' }}>
+        <button className="btn btn-primary" onClick={() => setShowNew(true)} style={{ width: '100%', justifyContent: 'center' }}>
           <Plus size={15} /> Nuovo cliente
         </button>
       </div>
 
-      {/* List */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}><span className="spinner" /></div>
+          <div style={{ textAlign: 'center', padding: 40 }}><span className="spinner" /></div>
         ) : clienti.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text3)' }}>
             <Users size={40} strokeWidth={1} style={{ margin: '0 auto 12px' }} />
@@ -169,27 +159,27 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
         ) : clienti.map(c => (
           <button key={c.id} onClick={() => selectCliente(c)} style={{
             display: 'flex', alignItems: 'center', gap: 12,
-            background: 'var(--surface)', border: '1px solid var(--border)',
+            background: 'white', border: '1px solid var(--border)',
             borderRadius: 'var(--radius)', padding: '12px 14px',
-            cursor: 'pointer', textAlign: 'left', width: '100%'
+            cursor: 'pointer', textAlign: 'left', width: '100%',
+            boxShadow: 'var(--shadow)'
           }}>
             <div style={{
-              width: 40, height: 40, borderRadius: 12, background: 'var(--primary-glow)',
-              border: '1px solid var(--border-active)', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', fontSize: 15, fontWeight: 700, color: 'var(--accent)', flexShrink: 0
+              width: 40, height: 40, borderRadius: 12,
+              background: 'var(--primary)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 15, fontWeight: 700, color: 'white', flexShrink: 0
             }}>
               {c.nome[0]}{c.cognome[0]}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{c.nome} {c.cognome}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{c.nome} {c.cognome}</div>
               <div style={{ fontSize: 12, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</div>
             </div>
-            <div style={{ color: 'var(--text3)', flexShrink: 0 }}><ChevronRight size={16} /></div>
+            <ChevronRight size={16} color="var(--text3)" />
           </button>
         ))}
       </div>
 
-      {/* Modal nuovo cliente */}
       {showNew && (
         <div className="modal-overlay" onClick={() => setShowNew(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -203,7 +193,7 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
               <div className="form-row"><label>Codice Fiscale</label><input value={form.codice_fiscale || ''} onChange={e => setForm(p => ({ ...p, codice_fiscale: e.target.value }))} /></div>
               <div className="form-row"><label>ATECO</label><input value={form.codice_ateco || ''} onChange={e => setForm(p => ({ ...p, codice_ateco: e.target.value }))} /></div>
               <div className="form-grid">
-                <div className="form-row"><label>Coeff. redditivit. %</label><input type="number" value={form.coefficiente_redditivita || 67} onChange={e => setForm(p => ({ ...p, coefficiente_redditivita: parseFloat(e.target.value) }))} required /></div>
+                <div className="form-row"><label>Coeff. %</label><input type="number" value={form.coefficiente_redditivita || 67} onChange={e => setForm(p => ({ ...p, coefficiente_redditivita: parseFloat(e.target.value) }))} required /></div>
                 <div className="form-row">
                   <label>Aliquota %</label>
                   <select value={form.aliquota_imposta || 15} onChange={e => setForm(p => ({ ...p, aliquota_imposta: parseFloat(e.target.value) }))}>
@@ -212,7 +202,7 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
                   </select>
                 </div>
               </div>
-              <div className="form-row"><label>INPS fissi annui €</label><input type="number" value={form.contributi_inps_fissi || 3000} onChange={e => setForm(p => ({ ...p, contributi_inps_fissi: parseFloat(e.target.value) }))} required /></div>
+              <div className="form-row"><label>INPS annui €</label><input type="number" value={form.contributi_inps_fissi || 3000} onChange={e => setForm(p => ({ ...p, contributi_inps_fissi: parseFloat(e.target.value) }))} required /></div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setShowNew(false)}>Annulla</button>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Crea cliente</button>

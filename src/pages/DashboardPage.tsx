@@ -20,7 +20,6 @@ export default function DashboardPage({ userId, onLogout }: { userId: string; on
 
   async function loadAll() {
     setLoading(true)
-    // Get user email to find cliente
     const { data: { user } } = await supabase.auth.getUser()
     const email = user?.email
     if (!email) return
@@ -76,18 +75,19 @@ export default function DashboardPage({ userId, onLogout }: { userId: string; on
   }
 
   return (
-    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg2)' }}>
       {/* Header */}
-      <div style={{ padding: '12px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, var(--primary), var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'white' }}>SM</div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>Studio Montemurro</div>
-            <div style={{ fontSize: 11, color: 'var(--text3)' }}>{cliente.nome} {cliente.cognome}</div>
-          </div>
+      <div style={{
+        padding: '10px 16px', background: 'var(--primary)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0
+      }}>
+        <img src="/logo-icona.png" alt="Logo" style={{ height: 36, width: 36, objectFit: 'contain', borderRadius: 6 }} />
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>Montemurro Studio Tributario</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{cliente.nome} {cliente.cognome}</div>
         </div>
-        <button onClick={onLogout} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex', padding: 4 }}>
-          <LogOut size={16} />
+        <button onClick={onLogout} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', display: 'flex', padding: 4 }}>
+          <LogOut size={18} />
         </button>
       </div>
 
@@ -95,7 +95,7 @@ export default function DashboardPage({ userId, onLogout }: { userId: string; on
       <TabNav active={tab} onChange={setTab} />
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg2)' }}>
         {tab === 'riepilogo'  && <RiepilogoTab cliente={cliente} fatture={fatture} />}
         {tab === 'fatture'    && <FattureTab clienteId={cliente.id} fatture={fatture} onRefresh={refreshFatture} />}
         {tab === 'imposte'    && <ImposteTab cliente={cliente} fatture={fatture} />}
