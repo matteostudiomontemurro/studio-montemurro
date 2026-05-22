@@ -24,6 +24,10 @@ export type Fattura = {
   numero: string
   data: string
   destinatario: string
+  compenso: number
+  contributo_cassa: number
+  tipo_cassa: string
+  cassa_esclusa_da_calcolo: boolean
   imponibile: number
   codice_iva: string
   totale: number
