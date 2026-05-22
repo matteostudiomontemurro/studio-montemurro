@@ -5,43 +5,61 @@ import { formatCurrency } from '../lib/fattura'
 export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fatture: Fattura[] }) {
   const calc = useMemo(() => {
     const attive = fatture.filter(f => !f.esclusa_da_calcolo)
-    const fatturato = attive.reduce((s, f) => s + f.imponibile, 0)
+    // Compensi professionali (base di calcolo)
+    const fatturato = attive.reduce((s, f) => s + (f.compenso ?? f.imponibile), 0)
+    // Casse escluse da calcolo (contributi integrativi ordini)
+    const casseEscluse = attive.reduce((s, f) => s + (f.cassa_esclusa_da_calcolo ? f.contributo_cassa : 0), 0)
+    // Rimborsi N1
+    const rimborsiN1 = fatture.filter(f => f.esclusa_da_calcolo).reduce((s, f) => s + f.imponibile, 0)
+    // Fatturato lordo totale (solo per mostrare)
+    const fatturatoLordo = attive.reduce((s, f) => s + f.imponibile, 0) + rimborsiN1
+
     const redditoImponibile = fatturato * (cliente.coefficiente_redditivita / 100)
     const imposta = redditoImponibile * (cliente.aliquota_imposta / 100)
     const totale = imposta + cliente.contributi_inps_fissi
     const accontoI = imposta * 0.4
     const accontoII = imposta * 0.6
-    const rimborsiN1 = fatture.filter(f => f.esclusa_da_calcolo).reduce((s, f) => s + f.imponibile, 0)
-    return { fatturato, redditoImponibile, imposta, totale, accontoI, accontoII, rimborsiN1 }
+    const hasCasseEscluse = casseEscluse > 0
+    const hasN1 = rimborsiN1 > 0
+
+    return { fatturato, casseEscluse, rimborsiN1, fatturatoLordo, redditoImponibile, imposta, totale, accontoI, accontoII, hasCasseEscluse, hasN1 }
   }, [cliente, fatture])
 
-  const steps = [
-    { label: 'Fatturato lordo emesso', value: calc.fatturato + calc.rimborsiN1, note: 'Totale fatture emesse', color: 'var(--text2)' },
-    { label: 'Rimborsi spese (N1)', value: -calc.rimborsiN1, note: 'Esclusi ex art. 15', color: 'var(--danger)', isNeg: true },
-    { label: 'Fatturato netto', value: calc.fatturato, note: 'Base di calcolo', color: 'var(--accent2)', bold: true },
-    { label: `× Coefficiente (${cliente.coefficiente_redditivita}%)`, value: calc.redditoImponibile, note: 'Reddito imponibile', color: 'var(--accent)', bold: true },
-    { label: `× Aliquota (${cliente.aliquota_imposta}%)`, value: calc.imposta, note: 'Imposta sostitutiva', color: 'var(--warning)', bold: true },
-    { label: '+ Contributi INPS fissi', value: cliente.contributi_inps_fissi, note: 'Importo annuo stimato', color: 'var(--text2)' },
-  ]
+  // Costruiamo i passi dinamicamente
+  const steps = []
+
+  steps.push({ label: 'Totale fatturato emesso', value: calc.fatturatoLordo, note: 'Lordo comprensivo di tutto', color: 'var(--text2)', bold: false })
+
+  if (calc.hasN1) {
+    steps.push({ label: '− Rimborsi spese (N1)', value: -calc.rimborsiN1, note: 'Esclusi ex art. 15', color: 'var(--danger)', bold: false })
+  }
+
+  if (calc.hasCasseEscluse) {
+    steps.push({ label: '− Contributi cassa previdenziale', value: -calc.casseEscluse, note: 'Contributi integrativi ordini', color: 'var(--warning)', bold: false })
+  }
+
+  steps.push({ label: 'Compensi professionali netti', value: calc.fatturato, note: 'Base di calcolo imposte', color: 'var(--accent)', bold: true })
+  steps.push({ label: `× Coefficiente (${cliente.coefficiente_redditivita}%)`, value: calc.redditoImponibile, note: 'Reddito imponibile', color: 'var(--primary)', bold: true })
+  steps.push({ label: `× Aliquota (${cliente.aliquota_imposta}%)`, value: calc.imposta, note: 'Imposta sostitutiva', color: 'var(--warning)', bold: true })
+  steps.push({ label: '+ Contributi INPS fissi', value: cliente.contributi_inps_fissi, note: 'Importo annuo stimato', color: 'var(--text2)', bold: false })
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text2)' }}>Calcolo imposte {new Date().getFullYear()}</h2>
 
-      {/* Calcolo step by step */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {steps.map(({ label, value, note, color, bold }, i) => (
           <div key={i} style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '12px 16px',
             borderBottom: i < steps.length - 1 ? '1px solid var(--border)' : 'none',
-            background: bold ? 'rgba(83,74,183,0.06)' : 'transparent'
+            background: bold ? 'rgba(7,36,62,0.04)' : 'transparent'
           }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: bold ? 600 : 400, color: bold ? 'var(--text)' : 'var(--text2)' }}>{label}</div>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{note}</div>
             </div>
-            <div style={{ fontFamily: 'var(--mono)', fontWeight: bold ? 700 : 500, fontSize: bold ? 16 : 14, color }}>
+            <div style={{ fontFamily: 'var(--mono)', fontWeight: bold ? 700 : 500, fontSize: bold ? 16 : 14, color, flexShrink: 0 }}>
               {value < 0 ? `− ${formatCurrency(Math.abs(value))}` : formatCurrency(value)}
             </div>
           </div>
@@ -50,7 +68,7 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
 
       {/* Totale */}
       <div style={{
-        background: 'linear-gradient(135deg, var(--primary-dark), var(--primary))',
+        background: 'var(--primary)',
         borderRadius: 'var(--radius)',
         padding: '20px 18px',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
@@ -72,7 +90,7 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
         ].map(({ label, value, scad }) => (
           <div key={label} className="card" style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{label}</div>
-            <div style={{ fontFamily: 'var(--mono)', fontSize: 16, fontWeight: 700, color: 'var(--accent)' }}>{formatCurrency(value)}</div>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 16, fontWeight: 700, color: 'var(--primary)' }}>{formatCurrency(value)}</div>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Scade a {scad}</div>
           </div>
         ))}
