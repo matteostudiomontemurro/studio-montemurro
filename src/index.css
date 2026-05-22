@@ -1,27 +1,27 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --primary: #534AB7;
-  --primary-light: #6B63C8;
-  --primary-dark: #3D3590;
-  --primary-glow: rgba(83, 74, 183, 0.25);
-  --accent: #A78BFA;
-  --accent2: #38BDF8;
-  --success: #34D399;
-  --warning: #FBBF24;
-  --danger: #F87171;
+  --primary: #07243e;
+  --primary-light: #0e3d6a;
+  --primary-dark: #051829;
+  --primary-glow: rgba(7, 36, 62, 0.12);
+  --accent: #1a5f9e;
+  --accent2: #2980b9;
+  --success: #27ae60;
+  --warning: #f39c12;
+  --danger: #e74c3c;
 
-  --bg: #0D0D1A;
-  --bg2: #13132A;
-  --bg3: #1A1A35;
-  --surface: #1E1E3A;
-  --surface2: #252545;
-  --border: rgba(255,255,255,0.08);
-  --border-active: rgba(83,74,183,0.5);
+  --bg: #ffffff;
+  --bg2: #f5f7fa;
+  --bg3: #eef1f5;
+  --surface: #ffffff;
+  --surface2: #f0f3f7;
+  --border: rgba(7, 36, 62, 0.12);
+  --border-active: rgba(7, 36, 62, 0.4);
 
-  --text: #F0EFFE;
-  --text2: #A09DC0;
-  --text3: #6B6890;
+  --text: #07243e;
+  --text2: #3a5a7a;
+  --text3: #7a99b5;
 
   --font: 'Outfit', sans-serif;
   --mono: 'DM Mono', monospace;
@@ -30,8 +30,8 @@
   --radius-sm: 8px;
   --radius-lg: 20px;
 
-  --shadow: 0 4px 24px rgba(0,0,0,0.4);
-  --shadow-primary: 0 4px 24px rgba(83,74,183,0.3);
+  --shadow: 0 2px 16px rgba(7, 36, 62, 0.08);
+  --shadow-primary: 0 4px 24px rgba(7, 36, 62, 0.2);
 }
 
 html, body, #root {
@@ -48,17 +48,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-/* Utilities */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
+  box-shadow: var(--shadow);
 }
 
 .btn {
@@ -86,12 +85,12 @@ body {
   color: var(--text2);
   border: 1px solid var(--border);
 }
-.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+.btn-ghost:hover { background: var(--bg3); color: var(--text); }
 
 .btn-danger {
-  background: rgba(248,113,113,0.15);
+  background: rgba(231,76,60,0.1);
   color: var(--danger);
-  border: 1px solid rgba(248,113,113,0.3);
+  border: 1px solid rgba(231,76,60,0.3);
 }
 
 input, select, textarea {
@@ -108,6 +107,7 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus {
   border-color: var(--primary);
+  background: white;
 }
 input::placeholder { color: var(--text3); }
 
@@ -131,16 +131,15 @@ label {
   font-family: var(--mono);
   letter-spacing: 0.04em;
 }
-.badge-success { background: rgba(52,211,153,0.15); color: var(--success); }
-.badge-warning { background: rgba(251,191,36,0.15); color: var(--warning); }
-.badge-danger  { background: rgba(248,113,113,0.15); color: var(--danger); }
-.badge-info    { background: rgba(56,189,248,0.15);  color: var(--accent2); }
-.badge-muted   { background: var(--surface2); color: var(--text3); }
+.badge-success { background: rgba(39,174,96,0.12); color: var(--success); }
+.badge-warning { background: rgba(243,156,18,0.12); color: var(--warning); }
+.badge-danger  { background: rgba(231,76,60,0.12);  color: var(--danger); }
+.badge-info    { background: rgba(41,128,185,0.12);  color: var(--accent2); }
+.badge-muted   { background: var(--bg3); color: var(--text3); }
 
-/* Modal overlay */
 .modal-overlay {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: rgba(7, 36, 62, 0.5);
   backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
@@ -156,8 +155,9 @@ label {
   max-height: 90vh;
   overflow-y: auto;
   animation: slideUp 0.25s;
+  box-shadow: 0 20px 60px rgba(7,36,62,0.2);
 }
-.modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+.modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: var(--text); }
 
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
@@ -165,7 +165,6 @@ label {
 .form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-/* Loading spinner */
 .spinner {
   width: 20px; height: 20px;
   border: 2px solid var(--border);
