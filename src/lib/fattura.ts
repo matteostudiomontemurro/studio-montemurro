@@ -36,21 +36,24 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
     const cognome = getText(cessionario, 'Cognome')
     const destinatario = denominazione || `${nome} ${cognome}`.trim() || 'N/D'
 
-    // Cassa previdenziale
-    const cassaEl = doc.getElementsByTagName('CassaPrevidenziale')[0]
+    // Cassa previdenziale — il tag è DatiCassaPrevidenziale dentro DatiGeneraliDocumento
+    const cassaEl = doc.getElementsByTagName('DatiCassaPrevidenziale')[0]
     let tipo_cassa = ''
     let contributo_cassa = 0
     let cassa_esclusa_da_calcolo = false
+    let imponibile_cassa = 0   // ImponibileCassa = compenso professionale netto dichiarato
 
     if (cassaEl) {
       tipo_cassa = getText(cassaEl, 'TipoCassa')
       contributo_cassa = parseFloat(getText(cassaEl, 'ImportoContributoCassa') || '0')
+      imponibile_cassa = parseFloat(getText(cassaEl, 'ImponibileCassa') || '0')
       // TC22 = INPS gestione separata → concorre al fatturato
       // Tutti gli altri (TC01 INARCASSA, TC06 CNPADC avvocati, ecc.) → esclusi
       cassa_esclusa_da_calcolo = tipo_cassa !== '' && tipo_cassa !== 'TC22'
     }
 
     // Codice IVA da DatiRiepilogo
+    // Doppio controllo: separiamo compenso (N2.2 o simili) da rimborsi (N1) e IVA
     let codice_iva = ''
     let totale_riepilogo = 0
     const riepiloghi = doc.getElementsByTagName('DatiRiepilogo')
@@ -62,9 +65,10 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       const imp = parseFloat(getText(r, 'ImponibileImporto') || '0')
       const imposta = parseFloat(getText(r, 'Imposta') || '0')
 
-      if (!codice_iva) codice_iva = natura || 'N4'
+      // Codice IVA principale = quello che NON è N1
+      if (!codice_iva && natura !== 'N1') codice_iva = natura || 'N4'
 
-      // N1 = rimborsi spese ex art.15 → esclusi completamente
+      // N1 = rimborsi spese ex art.15 → esclusi completamente dal fatturato
       if (natura === 'N1') {
         esclusa_da_calcolo = true
       } else {
@@ -72,11 +76,10 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       }
     }
 
-    // Imponibile totale dal riepilogo (compenso + eventuale cassa TC22)
-    // Per ottenere solo il compenso sottraiamo la cassa se esclusa
+    // totale_riepilogo = imponibile lordo (compenso + contributo cassa se presente)
     let imponibile_totale = totale_riepilogo
     if (imponibile_totale === 0) {
-      // Fallback da righe
+      // Fallback da righe di dettaglio
       const righe = doc.getElementsByTagName('DettaglioLinee')
       for (let i = 0; i < righe.length; i++) {
         const natura = getText(righe[i], 'Natura')
@@ -88,11 +91,19 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       }
     }
 
-    // Il compenso professionale è l'imponibile meno la cassa (se cassa esclusa)
-    // Se cassa TC22 o nessuna cassa, il compenso è tutto l'imponibile
-    const compenso = cassa_esclusa_da_calcolo
-      ? Math.max(0, imponibile_totale - contributo_cassa)
-      : imponibile_totale
+    // Compenso professionale:
+    // 1. Se la cassa dichiara ImponibileCassa, quello è il compenso esatto
+    // 2. Altrimenti, se cassa esclusa, compenso = imponibile_totale - contributo_cassa
+    // 3. Se nessuna cassa (o TC22), compenso = imponibile_totale
+    let compenso: number
+    if (imponibile_cassa > 0) {
+      // Fonte più affidabile: ImponibileCassa dichiarato nella fattura
+      compenso = imponibile_cassa
+    } else if (cassa_esclusa_da_calcolo) {
+      compenso = Math.max(0, imponibile_totale - contributo_cassa)
+    } else {
+      compenso = imponibile_totale
+    }
 
     // Verifica quadratura: compenso + cassa deve tornare all'imponibile totale
     const quadratura = Math.abs((compenso + contributo_cassa) - imponibile_totale)
