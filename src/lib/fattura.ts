@@ -15,12 +15,10 @@ export type FatturaParseResult = {
 }
 
 // getElementsByTagName fallisce quando l'XML ha un namespace default (xmlns="...")
-// perché i tag vengono registrati con namespace e la ricerca per nome locale non li trova.
 // Questa funzione prova prima senza namespace, poi con wildcard namespace "*".
 function getEls(root: Document | Element, tag: string): Element[] {
   const direct = root.getElementsByTagName(tag)
   if (direct.length > 0) return Array.from(direct)
-  // Wildcard namespace: funziona con xmlns default
   return Array.from(root.getElementsByTagNameNS('*', tag))
 }
 
@@ -60,25 +58,24 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
     let tipo_cassa = ''
     let contributo_cassa = 0
     let cassa_esclusa_da_calcolo = false
-    let imponibile_cassa = 0   // ImponibileCassa = compenso professionale netto dichiarato
+    let imponibile_cassa = 0
 
     if (cassaEl) {
       tipo_cassa = getText(cassaEl, 'TipoCassa')
       contributo_cassa = parseFloat(getText(cassaEl, 'ImportoContributoCassa') || '0')
       imponibile_cassa = parseFloat(getText(cassaEl, 'ImponibileCassa') || '0')
       // TC22 = INPS gestione separata → concorre al fatturato
-      // Tutti gli altri (TC01 INARCASSA, TC06 CNPADC avvocati, ecc.) → esclusi
+      // Tutti gli altri (TC01 INARCASSA, TC06 avvocati, ecc.) → esclusi dal calcolo
       cassa_esclusa_da_calcolo = tipo_cassa !== '' && tipo_cassa !== 'TC22'
     }
 
-    // DatiRiepilogo: separiamo compenso (N2.2 e simili) da rimborsi ex art.15 (N1)
-    // DOPPIO CONTROLLO:
-    // 1. DatiRiepilogo con Natura=N1 → rimborsi spese, esclusi dal fatturato
-    // 2. DatiRiepilogo con Natura≠N1 → fatturato lordo (compenso + eventuale cassa)
+    // DatiRiepilogo: somma solo le righe NON-N1 come imponibile professionale.
+    // Le righe N1 (rimborsi ex art.15) vengono ignorate dal totale ma
+    // NON rendono l'intera fattura esclusa dal calcolo imposte.
     let codice_iva = ''
     let totale_riepilogo = 0
+    let ha_compenso = false   // true se esiste almeno una riga non-N1 con importo > 0
     const riepiloghi = getEls(doc, 'DatiRiepilogo')
-    let esclusa_da_calcolo = false
 
     for (let i = 0; i < riepiloghi.length; i++) {
       const r = riepiloghi[i]
@@ -86,35 +83,38 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       const imp = parseFloat(getText(r, 'ImponibileImporto') || '0')
       const imposta = parseFloat(getText(r, 'Imposta') || '0')
 
-      // Codice IVA principale = quello che NON è N1
-      if (!codice_iva && natura !== 'N1') codice_iva = natura || 'N4'
-
-      // N1 = rimborsi spese ex art.15 → esclusi completamente dal fatturato
       if (natura === 'N1') {
-        esclusa_da_calcolo = true
-      } else {
-        totale_riepilogo += imp + imposta
+        // Rimborsi spese: ignorati dal totale imponibile
+        continue
       }
+
+      // Riga con compenso reale
+      if (!codice_iva) codice_iva = natura || 'N4'
+      totale_riepilogo += imp + imposta
+      if (imp > 0) ha_compenso = true
     }
 
-    // totale_riepilogo = imponibile lordo (compenso + contributo cassa se presente)
+    // Fallback da righe di dettaglio se nessun riepilogo utile trovato
     let imponibile_totale = totale_riepilogo
     if (imponibile_totale === 0) {
-      // Fallback da righe di dettaglio (ignora N1)
       const righe = getEls(doc, 'DettaglioLinee')
       for (let i = 0; i < righe.length; i++) {
         const natura = getText(righe[i], 'Natura')
         if (natura !== 'N1') {
-          imponibile_totale += parseFloat(getText(righe[i], 'PrezzoTotale') || '0')
-        } else {
-          esclusa_da_calcolo = true
+          const pt = parseFloat(getText(righe[i], 'PrezzoTotale') || '0')
+          imponibile_totale += pt
+          if (pt > 0) ha_compenso = true
         }
       }
     }
 
+    // esclusa_da_calcolo = true SOLO se la fattura non ha nessun compenso reale
+    // (es. fattura interamente di rimborsi ex art.15)
+    const esclusa_da_calcolo = !ha_compenso
+
     // Compenso professionale (priorità):
     // 1. ImponibileCassa dichiarato in fattura → valore esatto
-    // 2. Se cassa esclusa ma no ImponibileCassa → sottrazione
+    // 2. Se cassa esclusa → sottrazione
     // 3. Nessuna cassa o TC22 → tutto l'imponibile
     let compenso: number
     if (imponibile_cassa > 0) {
@@ -123,12 +123,6 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       compenso = Math.max(0, imponibile_totale - contributo_cassa)
     } else {
       compenso = imponibile_totale
-    }
-
-    // Verifica quadratura
-    const quadratura = Math.abs((compenso + contributo_cassa) - imponibile_totale)
-    if (quadratura > 0.01) {
-      console.warn(`Quadratura: compenso ${compenso} + cassa ${contributo_cassa} ≠ imponibile ${imponibile_totale}`)
     }
 
     // Totale documento (include bollo, IVA ecc.)
@@ -185,7 +179,6 @@ export function formatDate(dateStr: string): string {
   return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-// Dizionario codici cassa previdenziale
 export const CODICI_CASSA: Record<string, string> = {
   TC01: 'INARCASSA (Ingegneri/Architetti)',
   TC02: 'INPGI (Giornalisti)',
