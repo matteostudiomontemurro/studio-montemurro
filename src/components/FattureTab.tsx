@@ -4,8 +4,13 @@ import { supabase, Fattura } from '../lib/supabase'
 import { parseFatturaPA, formatCurrency, formatDate, CODICI_CASSA } from '../lib/fattura'
 
 export default function FattureTab({
-  clienteId, fatture, onRefresh
-}: { clienteId: string; fatture: Fattura[]; onRefresh: () => void }) {
+  clienteId, codiceFiscale, fatture, onRefresh
+}: {
+  clienteId: string
+  codiceFiscale: string   // CF del cliente loggato, per verifica cedente
+  fatture: Fattura[]
+  onRefresh: () => void
+}) {
   const [importing, setImporting] = useState(false)
   const [results, setResults] = useState<{ name: string; ok: boolean; msg: string }[]>([])
   const [showResults, setShowResults] = useState(false)
@@ -24,10 +29,26 @@ export default function FattureTab({
     for (const file of Array.from(files)) {
       const text = await file.text()
       const parsed = parseFatturaPA(text)
+
       if (parsed.errore) {
         res.push({ name: file.name, ok: false, msg: parsed.errore })
         continue
       }
+
+      // Controllo: il codice fiscale del cedente deve corrispondere al cliente loggato
+      if (parsed.cedente_cf && codiceFiscale) {
+        const cfXml = parsed.cedente_cf.toUpperCase().trim()
+        const cfCliente = codiceFiscale.toUpperCase().trim()
+        if (cfXml !== cfCliente) {
+          res.push({
+            name: file.name,
+            ok: false,
+            msg: `Fattura non importabile: codice fiscale cedente NON COERENTE con utente in sessione. Puoi importare solo le tue fatture.`,
+          })
+          continue
+        }
+      }
+
       const { error } = await supabase.from('fatture').insert({
         cliente_id: clienteId,
         numero: parsed.numero,
