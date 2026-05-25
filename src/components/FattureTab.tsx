@@ -7,9 +7,9 @@ export default function FattureTab({
   clienteId, codiceFiscale, fatture, onRefresh
 }: {
   clienteId: string
-  codiceFiscale: string   // CF del cliente loggato, per verifica cedente
+  codiceFiscale: string   // CF del cliente, per verifica cedente sull'XML
   fatture: Fattura[]
-  onRefresh: () => void
+  onRefresh: () => void | Promise<void>
 }) {
   const [importing, setImporting] = useState(false)
   const [results, setResults] = useState<{ name: string; ok: boolean; msg: string }[]>([])
@@ -35,7 +35,8 @@ export default function FattureTab({
         continue
       }
 
-      // Controllo: il codice fiscale del cedente deve corrispondere al cliente loggato
+      // Controllo: il CF del cedente nell'XML deve corrispondere al CF del cliente loggato.
+      // Se codiceFiscale è vuoto (es. admin senza CF impostato) il controllo viene saltato.
       if (parsed.cedente_cf && codiceFiscale) {
         const cfXml = parsed.cedente_cf.toUpperCase().trim()
         const cfCliente = codiceFiscale.toUpperCase().trim()
@@ -43,7 +44,7 @@ export default function FattureTab({
           res.push({
             name: file.name,
             ok: false,
-            msg: `Fattura non importabile: codice fiscale cedente NON COERENTE con utente in sessione. Puoi importare solo le tue fatture.`,
+            msg: 'Fattura non importabile: codice fiscale cedente NON COERENTE con utente in sessione. Puoi importare solo le tue fatture.',
           })
           continue
         }
