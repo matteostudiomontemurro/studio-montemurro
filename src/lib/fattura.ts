@@ -2,6 +2,7 @@ export type FatturaParseResult = {
   numero: string
   data: string
   destinatario: string
+  cedente_cf: string          // Codice fiscale di chi ha emesso la fattura
   compenso: number
   contributo_cassa: number
   tipo_cassa: string
@@ -13,9 +14,23 @@ export type FatturaParseResult = {
   errore?: string
 }
 
+// getElementsByTagName fallisce quando l'XML ha un namespace default (xmlns="...")
+// perché i tag vengono registrati con namespace e la ricerca per nome locale non li trova.
+// Questa funzione prova prima senza namespace, poi con wildcard namespace "*".
+function getEls(root: Document | Element, tag: string): Element[] {
+  const direct = root.getElementsByTagName(tag)
+  if (direct.length > 0) return Array.from(direct)
+  // Wildcard namespace: funziona con xmlns default
+  return Array.from(root.getElementsByTagNameNS('*', tag))
+}
+
+function getEl(root: Document | Element, tag: string): Element | null {
+  return getEls(root, tag)[0] ?? null
+}
+
 function getText(el: Element | null, tag: string): string {
   if (!el) return ''
-  const found = el.getElementsByTagName(tag)[0]
+  const found = getEl(el, tag)
   return found?.textContent?.trim() ?? ''
 }
 
@@ -25,19 +40,23 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
     const doc = parser.parseFromString(xmlString, 'text/xml')
 
     // Numero e data
-    const datiGen = doc.getElementsByTagName('DatiGeneraliDocumento')[0]
+    const datiGen = getEl(doc, 'DatiGeneraliDocumento')
     const numero = getText(datiGen, 'Numero')
     const data = getText(datiGen, 'Data')
 
+    // Codice fiscale del cedente (chi ha emesso la fattura)
+    const cedente = getEl(doc, 'CedentePrestatore')
+    const cedente_cf = getText(cedente, 'CodiceFiscale').toUpperCase()
+
     // Destinatario
-    const cessionario = doc.getElementsByTagName('CessionarioCommittente')[0]
+    const cessionario = getEl(doc, 'CessionarioCommittente')
     const denominazione = getText(cessionario, 'Denominazione')
     const nome = getText(cessionario, 'Nome')
     const cognome = getText(cessionario, 'Cognome')
     const destinatario = denominazione || `${nome} ${cognome}`.trim() || 'N/D'
 
-    // Cassa previdenziale — il tag è DatiCassaPrevidenziale dentro DatiGeneraliDocumento
-    const cassaEl = doc.getElementsByTagName('DatiCassaPrevidenziale')[0]
+    // Cassa previdenziale — tag DatiCassaPrevidenziale dentro DatiGeneraliDocumento
+    const cassaEl = getEl(doc, 'DatiCassaPrevidenziale')
     let tipo_cassa = ''
     let contributo_cassa = 0
     let cassa_esclusa_da_calcolo = false
@@ -52,11 +71,13 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       cassa_esclusa_da_calcolo = tipo_cassa !== '' && tipo_cassa !== 'TC22'
     }
 
-    // Codice IVA da DatiRiepilogo
-    // Doppio controllo: separiamo compenso (N2.2 o simili) da rimborsi (N1) e IVA
+    // DatiRiepilogo: separiamo compenso (N2.2 e simili) da rimborsi ex art.15 (N1)
+    // DOPPIO CONTROLLO:
+    // 1. DatiRiepilogo con Natura=N1 → rimborsi spese, esclusi dal fatturato
+    // 2. DatiRiepilogo con Natura≠N1 → fatturato lordo (compenso + eventuale cassa)
     let codice_iva = ''
     let totale_riepilogo = 0
-    const riepiloghi = doc.getElementsByTagName('DatiRiepilogo')
+    const riepiloghi = getEls(doc, 'DatiRiepilogo')
     let esclusa_da_calcolo = false
 
     for (let i = 0; i < riepiloghi.length; i++) {
@@ -79,8 +100,8 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
     // totale_riepilogo = imponibile lordo (compenso + contributo cassa se presente)
     let imponibile_totale = totale_riepilogo
     if (imponibile_totale === 0) {
-      // Fallback da righe di dettaglio
-      const righe = doc.getElementsByTagName('DettaglioLinee')
+      // Fallback da righe di dettaglio (ignora N1)
+      const righe = getEls(doc, 'DettaglioLinee')
       for (let i = 0; i < righe.length; i++) {
         const natura = getText(righe[i], 'Natura')
         if (natura !== 'N1') {
@@ -91,13 +112,12 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       }
     }
 
-    // Compenso professionale:
-    // 1. Se la cassa dichiara ImponibileCassa, quello è il compenso esatto
-    // 2. Altrimenti, se cassa esclusa, compenso = imponibile_totale - contributo_cassa
-    // 3. Se nessuna cassa (o TC22), compenso = imponibile_totale
+    // Compenso professionale (priorità):
+    // 1. ImponibileCassa dichiarato in fattura → valore esatto
+    // 2. Se cassa esclusa ma no ImponibileCassa → sottrazione
+    // 3. Nessuna cassa o TC22 → tutto l'imponibile
     let compenso: number
     if (imponibile_cassa > 0) {
-      // Fonte più affidabile: ImponibileCassa dichiarato nella fattura
       compenso = imponibile_cassa
     } else if (cassa_esclusa_da_calcolo) {
       compenso = Math.max(0, imponibile_totale - contributo_cassa)
@@ -105,14 +125,14 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       compenso = imponibile_totale
     }
 
-    // Verifica quadratura: compenso + cassa deve tornare all'imponibile totale
+    // Verifica quadratura
     const quadratura = Math.abs((compenso + contributo_cassa) - imponibile_totale)
     if (quadratura > 0.01) {
-      console.warn(`Quadratura non tornante: compenso ${compenso} + cassa ${contributo_cassa} ≠ imponibile ${imponibile_totale}`)
+      console.warn(`Quadratura: compenso ${compenso} + cassa ${contributo_cassa} ≠ imponibile ${imponibile_totale}`)
     }
 
-    // Totale documento (imponibile + IVA se presente)
-    const totaleDocEl = doc.getElementsByTagName('ImportoTotaleDocumento')[0]
+    // Totale documento (include bollo, IVA ecc.)
+    const totaleDocEl = getEl(doc, 'ImportoTotaleDocumento')
     const totale = totaleDocEl
       ? parseFloat(totaleDocEl.textContent?.trim() || '0')
       : imponibile_totale
@@ -123,6 +143,7 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       numero: numero || 'N/D',
       data: data || new Date().toISOString().split('T')[0],
       destinatario,
+      cedente_cf,
       compenso: Math.round(compenso * 100) / 100,
       contributo_cassa: Math.round(contributo_cassa * 100) / 100,
       tipo_cassa,
@@ -137,6 +158,7 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       numero: 'Errore',
       data: '',
       destinatario: '',
+      cedente_cf: '',
       compenso: 0,
       contributo_cassa: 0,
       tipo_cassa: '',
