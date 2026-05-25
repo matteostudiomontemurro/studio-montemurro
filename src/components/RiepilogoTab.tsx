@@ -5,18 +5,26 @@ import { formatCurrency } from '../lib/fattura'
 
 export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; fatture: Fattura[] }) {
   const stats = useMemo(() => {
-    // Escludi fatture N1 (rimborsi)
-    const attive = fatture.filter(f => !f.esclusa_da_calcolo)
-    // Il fatturato fiscale è la somma dei compensi (escluse casse di ordini professionali)
-    const fatturato = attive.reduce((s, f) => s + (f.compenso ?? f.imponibile), 0)
-    // Totale casse escluse (solo per mostrare)
-    const totaleCasseEscluse = attive.reduce((s, f) => s + (f.cassa_esclusa_da_calcolo ? f.contributo_cassa : 0), 0)
+    // Compensi professionali netti = somma diretta di f.compenso
+    // (già calcolato correttamente dal parser, indipendentemente da esclusa_da_calcolo)
+    const fatturato = fatture.reduce((s, f) => s + f.compenso, 0)
+
+    // Contributi cassa previdenziale esclusi dal calcolo (TC01, TC02 ecc.)
+    const totaleCasseEscluse = fatture
+      .filter(f => f.cassa_esclusa_da_calcolo)
+      .reduce((s, f) => s + f.contributo_cassa, 0)
+
     const redditoImponibile = fatturato * (cliente.coefficiente_redditivita / 100)
     const imposta = redditoImponibile * (cliente.aliquota_imposta / 100)
     const totaleImposte = imposta + cliente.contributi_inps_fissi
-    const incassate = attive.filter(f => f.stato === 'incassata').length
-    const hasCassaEsclusa = attive.some(f => f.cassa_esclusa_da_calcolo)
-    return { fatturato, totaleCasseEscluse, redditoImponibile, imposta, totaleImposte, incassate, totale: attive.length, hasCassaEsclusa }
+
+    const incassate = fatture.filter(f => f.stato === 'incassata').length
+    const hasCassaEsclusa = fatture.some(f => f.cassa_esclusa_da_calcolo)
+
+    return {
+      fatturato, totaleCasseEscluse, redditoImponibile, imposta,
+      totaleImposte, incassate, totale: fatture.length, hasCassaEsclusa
+    }
   }, [cliente, fatture])
 
   const kpis = [
@@ -51,7 +59,6 @@ export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; f
         </div>
       ))}
 
-      {/* Casse previdenziali escluse */}
       {stats.hasCassaEsclusa && (
         <div className="card" style={{ background: '#fffbf0', borderColor: '#f0d080' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--warning)', marginBottom: 4 }}>⚠ Contributi cassa previdenziale esclusi</div>

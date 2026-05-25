@@ -4,15 +4,24 @@ import { formatCurrency } from '../lib/fattura'
 
 export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fatture: Fattura[] }) {
   const calc = useMemo(() => {
-    const attive = fatture.filter(f => !f.esclusa_da_calcolo)
-    // Compensi professionali (base di calcolo)
-    const fatturato = attive.reduce((s, f) => s + (f.compenso ?? f.imponibile), 0)
-    // Casse escluse da calcolo (contributi integrativi ordini)
-    const casseEscluse = attive.reduce((s, f) => s + (f.cassa_esclusa_da_calcolo ? f.contributo_cassa : 0), 0)
-    // Rimborsi N1
-    const rimborsiN1 = fatture.filter(f => f.esclusa_da_calcolo).reduce((s, f) => s + f.imponibile, 0)
-    // Fatturato lordo totale (solo per mostrare)
-    const fatturatoLordo = attive.reduce((s, f) => s + f.imponibile, 0) + rimborsiN1
+    // Fatturato lordo = somma di tutti i totali fattura (compresi rimborsi e cassa)
+    const fatturatoLordo = fatture.reduce((s, f) => s + f.totale, 0)
+
+    // Rimborsi spese N1 = fatture interamente N1 (compenso=0) oppure righe N1
+    // Usiamo: se compenso=0 e imponibile>0 è una fattura solo rimborsi
+    // Altrimenti i rimborsi N1 sono già esclusi dall'imponibile in fase di import
+    const rimborsiN1 = fatture
+      .filter(f => f.compenso === 0 && f.imponibile === 0 && f.totale > 0)
+      .reduce((s, f) => s + f.totale, 0)
+
+    // Contributi cassa previdenziale esclusi (TC01, TC02 ecc. — NON TC22)
+    const casseEscluse = fatture
+      .filter(f => f.cassa_esclusa_da_calcolo)
+      .reduce((s, f) => s + f.contributo_cassa, 0)
+
+    // Compensi professionali netti = base di calcolo imposte
+    // Usiamo direttamente f.compenso che il parser ha già calcolato correttamente
+    const fatturato = fatture.reduce((s, f) => s + f.compenso, 0)
 
     const redditoImponibile = fatturato * (cliente.coefficiente_redditivita / 100)
     const imposta = redditoImponibile * (cliente.aliquota_imposta / 100)
@@ -22,26 +31,64 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
     const hasCasseEscluse = casseEscluse > 0
     const hasN1 = rimborsiN1 > 0
 
-    return { fatturato, casseEscluse, rimborsiN1, fatturatoLordo, redditoImponibile, imposta, totale, accontoI, accontoII, hasCasseEscluse, hasN1 }
+    return {
+      fatturato, casseEscluse, rimborsiN1, fatturatoLordo,
+      redditoImponibile, imposta, totale, accontoI, accontoII,
+      hasCasseEscluse, hasN1
+    }
   }, [cliente, fatture])
 
-  // Costruiamo i passi dinamicamente
   const steps = []
 
-  steps.push({ label: 'Totale fatturato emesso', value: calc.fatturatoLordo, note: 'Lordo comprensivo di tutto', color: 'var(--text2)', bold: false })
+  steps.push({
+    label: 'Totale fatturato emesso',
+    value: calc.fatturatoLordo,
+    note: 'Lordo comprensivo di tutto',
+    color: 'var(--text2)', bold: false
+  })
 
   if (calc.hasN1) {
-    steps.push({ label: '− Rimborsi spese (N1)', value: -calc.rimborsiN1, note: 'Esclusi ex art. 15', color: 'var(--danger)', bold: false })
+    steps.push({
+      label: '− Rimborsi spese (N1)',
+      value: -calc.rimborsiN1,
+      note: 'Esclusi ex art. 15',
+      color: 'var(--danger)', bold: false
+    })
   }
 
   if (calc.hasCasseEscluse) {
-    steps.push({ label: '− Contributi cassa previdenziale', value: -calc.casseEscluse, note: 'Contributi integrativi ordini', color: 'var(--warning)', bold: false })
+    steps.push({
+      label: '− Contributi cassa previdenziale',
+      value: -calc.casseEscluse,
+      note: 'Contributi integrativi ordini',
+      color: 'var(--warning)', bold: false
+    })
   }
 
-  steps.push({ label: 'Compensi professionali netti', value: calc.fatturato, note: 'Base di calcolo imposte', color: 'var(--accent)', bold: true })
-  steps.push({ label: `× Coefficiente (${cliente.coefficiente_redditivita}%)`, value: calc.redditoImponibile, note: 'Reddito imponibile', color: 'var(--primary)', bold: true })
-  steps.push({ label: `× Aliquota (${cliente.aliquota_imposta}%)`, value: calc.imposta, note: 'Imposta sostitutiva', color: 'var(--warning)', bold: true })
-  steps.push({ label: '+ Contributi INPS fissi', value: cliente.contributi_inps_fissi, note: 'Importo annuo stimato', color: 'var(--text2)', bold: false })
+  steps.push({
+    label: 'Compensi professionali netti',
+    value: calc.fatturato,
+    note: 'Base di calcolo imposte',
+    color: 'var(--accent)', bold: true
+  })
+  steps.push({
+    label: `× Coefficiente (${cliente.coefficiente_redditivita}%)`,
+    value: calc.redditoImponibile,
+    note: 'Reddito imponibile',
+    color: 'var(--primary)', bold: true
+  })
+  steps.push({
+    label: `× Aliquota (${cliente.aliquota_imposta}%)`,
+    value: calc.imposta,
+    note: 'Imposta sostitutiva',
+    color: 'var(--warning)', bold: true
+  })
+  steps.push({
+    label: '+ Contributi INPS fissi',
+    value: cliente.contributi_inps_fissi,
+    note: 'Importo annuo stimato',
+    color: 'var(--text2)', bold: false
+  })
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -66,7 +113,6 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
         ))}
       </div>
 
-      {/* Totale */}
       <div style={{
         background: 'var(--primary)',
         borderRadius: 'var(--radius)',
@@ -82,7 +128,6 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
         </div>
       </div>
 
-      {/* Acconti */}
       <div style={{ display: 'flex', gap: 10 }}>
         {[
           { label: '1° Acconto (40%)', value: calc.accontoI, scad: 'Giugno' },
