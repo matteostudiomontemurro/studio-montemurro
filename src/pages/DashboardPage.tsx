@@ -97,7 +97,7 @@ export default function DashboardPage({ userId, onLogout }: { userId: string; on
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg2)' }}>
         {tab === 'riepilogo'  && <RiepilogoTab cliente={cliente} fatture={fatture} />}
-        {tab === 'fatture'    && <FattureTab clienteId={cliente.id} fatture={fatture} onRefresh={refreshFatture} />}
+        {tab === 'fatture'    && <FattureTab clienteId={cliente.id} codiceFiscale={cliente.codice_fiscale} fatture={fatture} onRefresh={refreshFatture} />}
         {tab === 'imposte'    && <ImposteTab cliente={cliente} fatture={fatture} />}
         {tab === 'confronto'  && <ConfrontoTab cliente={cliente} fatture={fatture} anni={anni} onRefresh={refreshAnni} />}
         {tab === 'documenti'  && <DocumentiTab clienteId={cliente.id} documenti={documenti} isAdmin={false} onRefresh={refreshDocumenti} />}
