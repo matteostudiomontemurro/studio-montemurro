@@ -10,7 +10,7 @@ export type Cliente = {
   nome: string
   cognome: string
   email: string
-  codice_fiscale?: string
+  codice_fiscale: string
   codice_ateco?: string
   coefficiente_redditivita: number
   aliquota_imposta: number
