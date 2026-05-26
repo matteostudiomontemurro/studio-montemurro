@@ -21,7 +21,7 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
 
     // Compensi professionali netti = base di calcolo imposte
     // Usiamo direttamente f.compenso che il parser ha già calcolato correttamente
-    const fatturato = fatture.reduce((s, f) => s + f.compenso, 0)
+    const fatturato = fatture.reduce((s, f) => s + f.compenso + (f.cassa_esclusa_da_calcolo ? 0 : f.contributo_cassa), 0)
 
     const redditoImponibile = fatturato * (cliente.coefficiente_redditivita / 100)
     const imposta = redditoImponibile * (cliente.aliquota_imposta / 100)

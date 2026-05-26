@@ -7,7 +7,7 @@ export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; f
   const stats = useMemo(() => {
     // Compensi professionali netti = somma diretta di f.compenso
     // (già calcolato correttamente dal parser, indipendentemente da esclusa_da_calcolo)
-    const fatturato = fatture.reduce((s, f) => s + f.compenso, 0)
+    const fatturato = fatture.reduce((s, f) => s + f.compenso + (f.cassa_esclusa_da_calcolo ? 0 : f.contributo_cassa), 0)
 
     // Contributi cassa previdenziale esclusi dal calcolo (TC01, TC02 ecc.)
     const totaleCasseEscluse = fatture
