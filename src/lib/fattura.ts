@@ -2,7 +2,7 @@ export type FatturaParseResult = {
   numero: string
   data: string
   destinatario: string
-  cedente_cf: string
+  cedente_cf: string          // Codice fiscale di chi ha emesso la fattura
   compenso: number
   contributo_cassa: number
   tipo_cassa: string
@@ -14,75 +14,71 @@ export type FatturaParseResult = {
   errore?: string
 }
 
-// Rimuove tutti i namespace dall'XML prima di parsarlo.
-// Questo risolve il problema degli XML FatturaPA che hanno namespace misti:
-// il root ha xmlns="http://..." mentre i figli hanno xmlns="" (reset).
-// Con questa pulizia getElementsByTagName funziona sempre correttamente.
-function stripNamespaces(xml: string): string {
-  return xml
-    .replace(/<([a-zA-Z0-9_]+):([a-zA-Z0-9_]+)/g, '<$2')   // rimuove prefissi es. p:FatturaElettronica
-    .replace(/<\/([a-zA-Z0-9_]+):([a-zA-Z0-9_]+)/g, '</$2') // rimuove prefissi nei tag di chiusura
-    .replace(/\s+xmlns(:[a-zA-Z0-9_]+)?="[^"]*"/g, '')       // rimuove tutti gli attributi xmlns
-    .replace(/\s+xmlns(:[a-zA-Z0-9_]+)?='[^']*'/g, '')       // stessa cosa con apici singoli
+// getElementsByTagName fallisce quando l'XML ha un namespace default (xmlns="...")
+// perché i tag vengono registrati con namespace e la ricerca per nome locale non li trova.
+// Questa funzione prova prima senza namespace, poi con wildcard namespace "*".
+function getEls(root: Document | Element, tag: string): Element[] {
+  const direct = root.getElementsByTagName(tag)
+  if (direct.length > 0) return Array.from(direct)
+  // Wildcard namespace: funziona con xmlns default
+  return Array.from(root.getElementsByTagNameNS('*', tag))
+}
+
+function getEl(root: Document | Element, tag: string): Element | null {
+  return getEls(root, tag)[0] ?? null
 }
 
 function getText(el: Element | null, tag: string): string {
   if (!el) return ''
-  const found = el.getElementsByTagName(tag)[0]
+  const found = getEl(el, tag)
   return found?.textContent?.trim() ?? ''
 }
 
 export function parseFatturaPA(xmlString: string): FatturaParseResult {
   try {
     const parser = new DOMParser()
-    // Pulizia namespace prima del parsing: garantisce che getElementsByTagName
-    // funzioni sempre, indipendentemente dalla struttura namespace dell'XML
-    const cleanXml = stripNamespaces(xmlString)
-    const doc = parser.parseFromString(cleanXml, 'text/xml')
-
-    // Controlla errori di parsing
-    const parseError = doc.getElementsByTagName('parsererror')[0]
-    if (parseError) throw new Error('XML non valido')
+    const doc = parser.parseFromString(xmlString, 'text/xml')
 
     // Numero e data
-    const datiGen = doc.getElementsByTagName('DatiGeneraliDocumento')[0]
+    const datiGen = getEl(doc, 'DatiGeneraliDocumento')
     const numero = getText(datiGen, 'Numero')
     const data = getText(datiGen, 'Data')
 
     // Codice fiscale del cedente (chi ha emesso la fattura)
-    const cedente = doc.getElementsByTagName('CedentePrestatore')[0]
+    const cedente = getEl(doc, 'CedentePrestatore')
     const cedente_cf = getText(cedente, 'CodiceFiscale').toUpperCase()
 
     // Destinatario
-    const cessionario = doc.getElementsByTagName('CessionarioCommittente')[0]
+    const cessionario = getEl(doc, 'CessionarioCommittente')
     const denominazione = getText(cessionario, 'Denominazione')
     const nome = getText(cessionario, 'Nome')
     const cognome = getText(cessionario, 'Cognome')
     const destinatario = denominazione || `${nome} ${cognome}`.trim() || 'N/D'
 
-    // Cassa previdenziale
-    const cassaEl = doc.getElementsByTagName('DatiCassaPrevidenziale')[0]
+    // Cassa previdenziale — tag DatiCassaPrevidenziale dentro DatiGeneraliDocumento
+    const cassaEl = getEl(doc, 'DatiCassaPrevidenziale')
     let tipo_cassa = ''
     let contributo_cassa = 0
     let cassa_esclusa_da_calcolo = false
-    let imponibile_cassa = 0
+    let imponibile_cassa = 0   // ImponibileCassa = compenso professionale netto dichiarato
 
     if (cassaEl) {
       tipo_cassa = getText(cassaEl, 'TipoCassa')
       contributo_cassa = parseFloat(getText(cassaEl, 'ImportoContributoCassa') || '0')
       imponibile_cassa = parseFloat(getText(cassaEl, 'ImponibileCassa') || '0')
       // TC22 = INPS gestione separata → concorre al fatturato
-      // Tutti gli altri → esclusi dal calcolo imposte
+      // Tutti gli altri (TC01 INARCASSA, TC06 CNPADC avvocati, ecc.) → esclusi
       cassa_esclusa_da_calcolo = tipo_cassa !== '' && tipo_cassa !== 'TC22'
     }
 
-    // DatiRiepilogo: somma solo le righe NON-N1.
-    // Le righe N1 (rimborsi ex art.15) vengono ignorate ma NON rendono
-    // l'intera fattura esclusa dal calcolo imposte.
+    // DatiRiepilogo: separiamo compenso (N2.2 e simili) da rimborsi ex art.15 (N1)
+    // DOPPIO CONTROLLO:
+    // 1. DatiRiepilogo con Natura=N1 → rimborsi spese, esclusi dal fatturato
+    // 2. DatiRiepilogo con Natura≠N1 → fatturato lordo (compenso + eventuale cassa)
     let codice_iva = ''
     let totale_riepilogo = 0
-    let ha_compenso = false
-    const riepiloghi = doc.getElementsByTagName('DatiRiepilogo')
+    const riepiloghi = getEls(doc, 'DatiRiepilogo')
+    let esclusa_da_calcolo = false
 
     for (let i = 0; i < riepiloghi.length; i++) {
       const r = riepiloghi[i]
@@ -90,34 +86,35 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       const imp = parseFloat(getText(r, 'ImponibileImporto') || '0')
       const imposta = parseFloat(getText(r, 'Imposta') || '0')
 
-      if (natura === 'N1') continue  // rimborsi: ignorati
+      // Codice IVA principale = quello che NON è N1
+      if (!codice_iva && natura !== 'N1') codice_iva = natura || 'N4'
 
-      if (!codice_iva) codice_iva = natura || 'N4'
-      totale_riepilogo += imp + imposta
-      if (imp > 0) ha_compenso = true
+      // N1 = rimborsi spese ex art.15 → esclusi completamente dal fatturato
+      if (natura === 'N1') {
+        esclusa_da_calcolo = true
+      } else {
+        totale_riepilogo += imp + imposta
+      }
     }
 
-    // Fallback da righe di dettaglio se nessun riepilogo utile
+    // totale_riepilogo = imponibile lordo (compenso + contributo cassa se presente)
     let imponibile_totale = totale_riepilogo
     if (imponibile_totale === 0) {
-      const righe = doc.getElementsByTagName('DettaglioLinee')
+      // Fallback da righe di dettaglio (ignora N1)
+      const righe = getEls(doc, 'DettaglioLinee')
       for (let i = 0; i < righe.length; i++) {
         const natura = getText(righe[i], 'Natura')
         if (natura !== 'N1') {
-          const pt = parseFloat(getText(righe[i], 'PrezzoTotale') || '0')
-          imponibile_totale += pt
-          if (pt > 0) ha_compenso = true
+          imponibile_totale += parseFloat(getText(righe[i], 'PrezzoTotale') || '0')
+        } else {
+          esclusa_da_calcolo = true
         }
       }
     }
 
-    // esclusa_da_calcolo = true SOLO se la fattura non ha nessun compenso reale
-    // (fattura interamente di rimborsi ex art.15)
-    const esclusa_da_calcolo = !ha_compenso
-
-    // Compenso professionale:
-    // 1. ImponibileCassa dichiarato → valore esatto
-    // 2. Cassa esclusa → sottrazione
+    // Compenso professionale (priorità):
+    // 1. ImponibileCassa dichiarato in fattura → valore esatto
+    // 2. Se cassa esclusa ma no ImponibileCassa → sottrazione
     // 3. Nessuna cassa o TC22 → tutto l'imponibile
     let compenso: number
     if (imponibile_cassa > 0) {
@@ -128,8 +125,14 @@ export function parseFatturaPA(xmlString: string): FatturaParseResult {
       compenso = imponibile_totale
     }
 
+    // Verifica quadratura
+    const quadratura = Math.abs((compenso + contributo_cassa) - imponibile_totale)
+    if (quadratura > 0.01) {
+      console.warn(`Quadratura: compenso ${compenso} + cassa ${contributo_cassa} ≠ imponibile ${imponibile_totale}`)
+    }
+
     // Totale documento (include bollo, IVA ecc.)
-    const totaleDocEl = doc.getElementsByTagName('ImportoTotaleDocumento')[0]
+    const totaleDocEl = getEl(doc, 'ImportoTotaleDocumento')
     const totale = totaleDocEl
       ? parseFloat(totaleDocEl.textContent?.trim() || '0')
       : imponibile_totale
@@ -182,6 +185,7 @@ export function formatDate(dateStr: string): string {
   return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+// Dizionario codici cassa previdenziale
 export const CODICI_CASSA: Record<string, string> = {
   TC01: 'INARCASSA (Ingegneri/Architetti)',
   TC02: 'INPGI (Giornalisti)',
