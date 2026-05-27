@@ -1,8 +1,19 @@
 import { useState, useEffect } from 'react'
-import { supabase, Cliente, Fattura, Documento } from '../lib/supabase'
+import { supabase, Cliente, Fattura, Documento, CategoriaPrevidenziale } from '../lib/supabase'
 import { Users, Plus, ChevronRight, LogOut, Settings, ArrowLeft } from 'lucide-react'
 import FattureTab from '../components/FattureTab'
 import DocumentiTab from '../components/DocumentiTab'
+
+const defaultForm: Partial<Cliente> = {
+  nome: '', cognome: '', email: '', codice_fiscale: '',
+  codice_ateco: '', coefficiente_redditivita: 67,
+  aliquota_imposta: 15,
+  categoria_previdenziale: 'ordine',
+  aliquota_inps_gs: 26.23,
+  contributi_inps_fissi: 0,
+  aliquota_inps_eccedenza: 0,
+  reddito_minimale_inps: 0,
+}
 
 export default function AdminPage({ onLogout }: { onLogout: () => void }) {
   const [clienti, setClienti] = useState<Cliente[]>([])
@@ -12,12 +23,7 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<'fatture' | 'documenti' | 'parametri'>('parametri')
   const [showNew, setShowNew] = useState(false)
   const [loading, setLoading] = useState(true)
-
-  const [form, setForm] = useState<Partial<Cliente>>({
-    nome: '', cognome: '', email: '', codice_fiscale: '',
-    codice_ateco: '', coefficiente_redditivita: 67,
-    aliquota_imposta: 15, contributi_inps_fissi: 3000
-  })
+  const [form, setForm] = useState<Partial<Cliente>>(defaultForm)
 
   useEffect(() => { loadClienti() }, [])
 
@@ -52,22 +58,121 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     const { error } = await supabase.from('clienti').insert(form)
-    if (!error) { setShowNew(false); loadClienti() }
+    if (!error) { setShowNew(false); setForm(defaultForm); loadClienti() }
     else alert('Errore: ' + error.message)
   }
 
   async function handleSaveParams(e: React.FormEvent) {
     e.preventDefault()
-    await supabase.from('clienti').update({
+    const update: Partial<Cliente> = {
       codice_ateco: form.codice_ateco,
       coefficiente_redditivita: form.coefficiente_redditivita,
       aliquota_imposta: form.aliquota_imposta,
+      categoria_previdenziale: form.categoria_previdenziale,
+      aliquota_inps_gs: form.aliquota_inps_gs,
       contributi_inps_fissi: form.contributi_inps_fissi,
-    }).eq('id', selected!.id)
+      aliquota_inps_eccedenza: form.aliquota_inps_eccedenza,
+      reddito_minimale_inps: form.reddito_minimale_inps,
+    }
+    await supabase.from('clienti').update(update).eq('id', selected!.id)
     const { data } = await supabase.from('clienti').select('*').eq('id', selected!.id).single()
     if (data) { setSelected(data); setForm(data) }
     loadClienti()
     alert('Parametri salvati!')
+  }
+
+  // Form sezione previdenziale — usato sia in nuovo cliente che in modifica parametri
+  function FormPrevidenziale({ f, setF }: { f: Partial<Cliente>; setF: (fn: (p: Partial<Cliente>) => Partial<Cliente>) => void }) {
+    const cat = f.categoria_previdenziale || 'ordine'
+    return (
+      <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius-sm)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Profilo previdenziale
+        </div>
+
+        {/* Scelta principale: Ordine vs INPS */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {([
+            { val: 'ordine', label: 'Ordine professionale' },
+            { val: 'inps_gs', label: 'INPS' },
+          ] as { val: CategoriaPrevidenziale; label: string }[]).map(opt => (
+            <button key={opt.val} type="button"
+              onClick={() => setF(p => ({ ...p, categoria_previdenziale: opt.val }))}
+              style={{
+                flex: 1, padding: '8px 6px', borderRadius: 'var(--radius-sm)', fontSize: 12, fontWeight: 600,
+                border: `2px solid ${(cat === opt.val || (opt.val === 'inps_gs' && (cat === 'inps_gs' || cat === 'inps_ac'))) ? 'var(--primary)' : 'var(--border)'}`,
+                background: (cat === opt.val || (opt.val === 'inps_gs' && (cat === 'inps_gs' || cat === 'inps_ac'))) ? 'var(--primary)' : 'white',
+                color: (cat === opt.val || (opt.val === 'inps_gs' && (cat === 'inps_gs' || cat === 'inps_ac'))) ? 'white' : 'var(--text2)',
+                cursor: 'pointer',
+              }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Se INPS: scelta gestione separata vs artigiani/commercianti */}
+        {(cat === 'inps_gs' || cat === 'inps_ac') && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([
+              { val: 'inps_gs', label: 'Gestione separata' },
+              { val: 'inps_ac', label: 'Artigiani/Commercianti' },
+            ] as { val: CategoriaPrevidenziale; label: string }[]).map(opt => (
+              <button key={opt.val} type="button"
+                onClick={() => setF(p => ({ ...p, categoria_previdenziale: opt.val }))}
+                style={{
+                  flex: 1, padding: '7px 6px', borderRadius: 'var(--radius-sm)', fontSize: 11, fontWeight: 600,
+                  border: `2px solid ${cat === opt.val ? 'var(--accent)' : 'var(--border)'}`,
+                  background: cat === opt.val ? 'var(--accent)' : 'white',
+                  color: cat === opt.val ? 'white' : 'var(--text2)',
+                  cursor: 'pointer',
+                }}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Gestione separata: aliquota % */}
+        {cat === 'inps_gs' && (
+          <div className="form-row" style={{ marginBottom: 0 }}>
+            <label>Aliquota INPS gestione separata (%)</label>
+            <input type="number" step="0.01" min="0" max="100"
+              value={f.aliquota_inps_gs ?? 26.23}
+              onChange={e => setF(p => ({ ...p, aliquota_inps_gs: parseFloat(e.target.value) }))} />
+            <span style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
+              Applicata al reddito imponibile (compenso × coefficiente)
+            </span>
+          </div>
+        )}
+
+        {/* Artigiani/commercianti: fissi + eccedenza + minimale */}
+        {cat === 'inps_ac' && (
+          <>
+            <div className="form-row" style={{ marginBottom: 0 }}>
+              <label>Contributi fissi annui (€)</label>
+              <input type="number" step="0.01" min="0"
+                value={f.contributi_inps_fissi ?? 0}
+                onChange={e => setF(p => ({ ...p, contributi_inps_fissi: parseFloat(e.target.value) }))} />
+            </div>
+            <div className="form-row" style={{ marginBottom: 0 }}>
+              <label>Aliquota sull'eccedenza del minimale (%)</label>
+              <input type="number" step="0.01" min="0" max="100"
+                value={f.aliquota_inps_eccedenza ?? 0}
+                onChange={e => setF(p => ({ ...p, aliquota_inps_eccedenza: parseFloat(e.target.value) }))} />
+            </div>
+            <div className="form-row" style={{ marginBottom: 0 }}>
+              <label>Reddito minimale INPS annuo (€)</label>
+              <input type="number" step="0.01" min="0"
+                value={f.reddito_minimale_inps ?? 0}
+                onChange={e => setF(p => ({ ...p, reddito_minimale_inps: parseFloat(e.target.value) }))} />
+              <span style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
+                Stabilito annualmente dall'INPS
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    )
   }
 
   // DETAIL VIEW
@@ -112,10 +217,7 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
                   <option value={15}>15% – Aliquota ordinaria</option>
                 </select>
               </div>
-              <div className="form-row">
-                <label>Contributi INPS fissi annui (€)</label>
-                <input type="number" step="0.01" value={form.contributi_inps_fissi || 3000} onChange={e => setForm(p => ({ ...p, contributi_inps_fissi: parseFloat(e.target.value) }))} />
-              </div>
+              <FormPrevidenziale f={form} setF={setForm} />
               <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }}>
                 <Settings size={14} /> Salva parametri
               </button>
@@ -202,9 +304,9 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
                   </select>
                 </div>
               </div>
-              <div className="form-row"><label>INPS annui €</label><input type="number" value={form.contributi_inps_fissi || 3000} onChange={e => setForm(p => ({ ...p, contributi_inps_fissi: parseFloat(e.target.value) }))} required /></div>
+              <FormPrevidenziale f={form} setF={setForm} />
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setShowNew(false)}>Annulla</button>
+                <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => { setShowNew(false); setForm(defaultForm) }}>Annulla</button>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Crea cliente</button>
               </div>
             </form>
