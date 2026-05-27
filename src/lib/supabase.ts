@@ -5,6 +5,12 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// Categoria previdenziale del cliente
+// 'ordine'       → iscritto a ordine professionale (INARCASSA, CNPADC, ecc.)
+// 'inps_gs'      → INPS gestione separata
+// 'inps_ac'      → INPS artigiani/commercianti
+export type CategoriaPrevidenziale = 'ordine' | 'inps_gs' | 'inps_ac'
+
 export type Cliente = {
   id: string
   nome: string
@@ -14,7 +20,14 @@ export type Cliente = {
   codice_ateco?: string
   coefficiente_redditivita: number
   aliquota_imposta: number
-  contributi_inps_fissi: number
+  // Categoria previdenziale (determina logica calcolo imposte)
+  categoria_previdenziale: CategoriaPrevidenziale
+  // Campi usati solo per inps_gs: aliquota % da applicare al reddito imponibile
+  aliquota_inps_gs?: number
+  // Campi usati solo per inps_ac
+  contributi_inps_fissi?: number       // contributi fissi annui
+  aliquota_inps_eccedenza?: number     // % sull'eccedenza del minimale
+  reddito_minimale_inps?: number       // minimale INPS annuo (impostato da admin)
   creato_il: string
 }
 
