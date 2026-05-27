@@ -37,12 +37,12 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
 
     if (isGS) {
       // Gestione separata: % × reddito imponibile
-      contributiINPS = redditoImponibile * ((cliente.aliquota_inps_gs ?? 0) / 100)
+      contributiINPS = redditoImponibile * (Number(cliente.aliquota_inps_gs ?? 0) / 100)
     } else if (isArtigiano) {
       // Artigiani/commercianti: fissi + eventuale eccedenza
-      const fissi = cliente.contributi_inps_fissi ?? 0
-      const minimale = cliente.reddito_minimale_inps ?? 0
-      const percEcc = cliente.aliquota_inps_eccedenza ?? 0
+      const fissi = Number(cliente.contributi_inps_fissi ?? 0)
+      const minimale = Number(cliente.reddito_minimale_inps ?? 0)
+      const percEcc = Number(cliente.aliquota_inps_eccedenza ?? 0)
       contributiVariabili = redditoImponibile > minimale
         ? (redditoImponibile - minimale) * (percEcc / 100)
         : 0
@@ -114,7 +114,7 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
 
   if (calc.isGS) {
     steps.push({
-      label: `+ Contributi INPS (${cliente.aliquota_inps_gs ?? 0}% reddito imponibile)`,
+      label: `+ Contributi INPS (${Number(cliente.aliquota_inps_gs ?? 0)}% reddito imponibile)`,
       value: calc.contributiINPS,
       note: 'Gestione separata',
       color: 'var(--text2)', bold: false
@@ -122,15 +122,15 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
   } else if (calc.isArtigiano) {
     steps.push({
       label: '+ Contributi INPS fissi',
-      value: cliente.contributi_inps_fissi ?? 0,
+      value: Number(cliente.contributi_inps_fissi ?? 0),
       note: 'Importo annuo fisso',
       color: 'var(--text2)', bold: false
     })
     if (calc.contributiVariabili > 0) {
       steps.push({
-        label: `+ Contributi eccedenza minimale (${cliente.aliquota_inps_eccedenza ?? 0}%)`,
+        label: `+ Contributi eccedenza minimale (${Number(cliente.aliquota_inps_eccedenza ?? 0)}%)`,
         value: calc.contributiVariabili,
-        note: `Reddito imponibile > minimale ${formatCurrency(cliente.reddito_minimale_inps ?? 0)}`,
+        note: `Reddito imponibile > minimale ${formatCurrency(Number(cliente.reddito_minimale_inps ?? 0))}`,
         color: 'var(--text2)', bold: false
       })
     }

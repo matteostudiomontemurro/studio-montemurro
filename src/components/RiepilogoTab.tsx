@@ -22,11 +22,11 @@ export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; f
 
     let contributiINPS = 0
     if (isGS) {
-      contributiINPS = redditoImponibile * ((cliente.aliquota_inps_gs ?? 0) / 100)
+      contributiINPS = redditoImponibile * (Number(cliente.aliquota_inps_gs ?? 0) / 100)
     } else if (isArtigiano) {
-      const fissi = cliente.contributi_inps_fissi ?? 0
-      const minimale = cliente.reddito_minimale_inps ?? 0
-      const percEcc = cliente.aliquota_inps_eccedenza ?? 0
+      const fissi = Number(cliente.contributi_inps_fissi ?? 0)
+      const minimale = Number(cliente.reddito_minimale_inps ?? 0)
+      const percEcc = Number(cliente.aliquota_inps_eccedenza ?? 0)
       const variabili = redditoImponibile > minimale ? (redditoImponibile - minimale) * (percEcc / 100) : 0
       contributiINPS = fissi + variabili
     }
