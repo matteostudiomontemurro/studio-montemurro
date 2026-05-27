@@ -5,33 +5,51 @@ import { formatCurrency } from '../lib/fattura'
 
 export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; fatture: Fattura[] }) {
   const stats = useMemo(() => {
-    // Compensi professionali netti = somma diretta di f.compenso
-    // (già calcolato correttamente dal parser, indipendentemente da esclusa_da_calcolo)
-    const fatturato = fatture.reduce((s, f) => s + f.compenso + (f.cassa_esclusa_da_calcolo ? 0 : f.contributo_cassa), 0)
+    const cat = cliente.categoria_previdenziale ?? 'ordine'
+    const isArtigiano = cat === 'inps_ac'
+    const isGS = cat === 'inps_gs'
 
-    // Contributi cassa previdenziale esclusi dal calcolo (TC01, TC02 ecc.)
+    // Base tassabile: compenso + cassa non esclusa (TC22)
+    const fatturato = fatture.reduce((s, f) =>
+      s + f.compenso + (f.cassa_esclusa_da_calcolo ? 0 : f.contributo_cassa), 0)
+
     const totaleCasseEscluse = fatture
       .filter(f => f.cassa_esclusa_da_calcolo)
       .reduce((s, f) => s + f.contributo_cassa, 0)
 
     const redditoImponibile = fatturato * (cliente.coefficiente_redditivita / 100)
     const imposta = redditoImponibile * (cliente.aliquota_imposta / 100)
-    const totaleImposte = imposta + cliente.contributi_inps_fissi
 
+    let contributiINPS = 0
+    if (isGS) {
+      contributiINPS = redditoImponibile * ((cliente.aliquota_inps_gs ?? 0) / 100)
+    } else if (isArtigiano) {
+      const fissi = cliente.contributi_inps_fissi ?? 0
+      const minimale = cliente.reddito_minimale_inps ?? 0
+      const percEcc = cliente.aliquota_inps_eccedenza ?? 0
+      const variabili = redditoImponibile > minimale ? (redditoImponibile - minimale) * (percEcc / 100) : 0
+      contributiINPS = fissi + variabili
+    }
+
+    const totaleImposte = imposta + contributiINPS
     const incassate = fatture.filter(f => f.stato === 'incassata').length
     const hasCassaEsclusa = fatture.some(f => f.cassa_esclusa_da_calcolo)
 
     return {
+      cat, isArtigiano, isGS,
       fatturato, totaleCasseEscluse, redditoImponibile, imposta,
-      totaleImposte, incassate, totale: fatture.length, hasCassaEsclusa
+      contributiINPS, totaleImposte, incassate, totale: fatture.length, hasCassaEsclusa
     }
   }, [cliente, fatture])
 
+  const labelBase = stats.isArtigiano ? 'Ricavi dell\'attività' : 'Compensi professionali'
+  const noteDA = stats.isGS || stats.isArtigiano ? 'Imposta + INPS' : 'Imposta sostitutiva'
+
   const kpis = [
-    { label: 'Compensi professionali', value: formatCurrency(stats.fatturato), icon: Euro, color: 'var(--accent)', note: 'Base di calcolo' },
+    { label: labelBase, value: formatCurrency(stats.fatturato), icon: Euro, color: 'var(--accent)', note: 'Base di calcolo' },
     { label: 'Reddito imponibile', value: formatCurrency(stats.redditoImponibile), icon: TrendingUp, color: 'var(--primary)', note: `Coeff. ${cliente.coefficiente_redditivita}%` },
     { label: 'Imposta sostitutiva', value: formatCurrency(stats.imposta), icon: PiggyBank, color: 'var(--warning)', note: `Aliquota ${cliente.aliquota_imposta}%` },
-    { label: 'Da accantonare', value: formatCurrency(stats.totaleImposte), icon: FileText, color: 'var(--primary)', note: 'Imposta + INPS' },
+    { label: 'Da accantonare', value: formatCurrency(stats.totaleImposte), icon: FileText, color: 'var(--primary)', note: noteDA },
   ]
 
   return (

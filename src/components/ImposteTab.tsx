@@ -4,41 +4,69 @@ import { formatCurrency } from '../lib/fattura'
 
 export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fatture: Fattura[] }) {
   const calc = useMemo(() => {
-    // Fatturato lordo = somma di tutti i totali fattura (compresi rimborsi e cassa)
+    const cat = cliente.categoria_previdenziale ?? 'ordine'
+    const isArtigiano = cat === 'inps_ac'
+    const isGS = cat === 'inps_gs'
+
+    // Fatturato lordo = somma totali fattura
     const fatturatoLordo = fatture.reduce((s, f) => s + f.totale, 0)
 
-    // Rimborsi spese N1 = fatture interamente N1 (compenso=0) oppure righe N1
-    // Usiamo: se compenso=0 e imponibile>0 è una fattura solo rimborsi
-    // Altrimenti i rimborsi N1 sono già esclusi dall'imponibile in fase di import
+    // Rimborsi N1 = fatture senza compenso e senza imponibile
     const rimborsiN1 = fatture
       .filter(f => f.compenso === 0 && f.imponibile === 0 && f.totale > 0)
       .reduce((s, f) => s + f.totale, 0)
 
-    // Contributi cassa previdenziale esclusi (TC01, TC02 ecc. — NON TC22)
+    // Casse ordini professionali escluse (solo cat. A)
     const casseEscluse = fatture
       .filter(f => f.cassa_esclusa_da_calcolo)
       .reduce((s, f) => s + f.contributo_cassa, 0)
 
-    // Compensi professionali netti = base di calcolo imposte
-    // Usiamo direttamente f.compenso che il parser ha già calcolato correttamente
-    const fatturato = fatture.reduce((s, f) => s + f.compenso + (f.cassa_esclusa_da_calcolo ? 0 : f.contributo_cassa), 0)
+    // Base di calcolo (compenso tassabile):
+    // Cat. A (ordine): compenso netto (cassa ordine già esclusa dal parser)
+    // Cat. B (inps_gs): compenso + cassa TC22 (già inclusa nel compenso dal parser)
+    // Cat. C (inps_ac): compenso (nessuna cassa da gestire)
+    const baseTassabile = fatture.reduce((s, f) =>
+      s + f.compenso + (f.cassa_esclusa_da_calcolo ? 0 : f.contributo_cassa), 0)
 
-    const redditoImponibile = fatturato * (cliente.coefficiente_redditivita / 100)
+    const redditoImponibile = baseTassabile * (cliente.coefficiente_redditivita / 100)
     const imposta = redditoImponibile * (cliente.aliquota_imposta / 100)
-    const totale = imposta + cliente.contributi_inps_fissi
+
+    // Contributi INPS — dipende dalla categoria
+    let contributiINPS = 0
+    let contributiVariabili = 0
+
+    if (isGS) {
+      // Gestione separata: % × reddito imponibile
+      contributiINPS = redditoImponibile * ((cliente.aliquota_inps_gs ?? 0) / 100)
+    } else if (isArtigiano) {
+      // Artigiani/commercianti: fissi + eventuale eccedenza
+      const fissi = cliente.contributi_inps_fissi ?? 0
+      const minimale = cliente.reddito_minimale_inps ?? 0
+      const percEcc = cliente.aliquota_inps_eccedenza ?? 0
+      contributiVariabili = redditoImponibile > minimale
+        ? (redditoImponibile - minimale) * (percEcc / 100)
+        : 0
+      contributiINPS = fissi + contributiVariabili
+    }
+    // Cat. ordine: nessun contributo INPS nell'app
+
+    const totale = imposta + contributiINPS
     const accontoI = imposta * 0.4
     const accontoII = imposta * 0.6
     const hasCasseEscluse = casseEscluse > 0
     const hasN1 = rimborsiN1 > 0
 
     return {
-      fatturato, casseEscluse, rimborsiN1, fatturatoLordo,
-      redditoImponibile, imposta, totale, accontoI, accontoII,
-      hasCasseEscluse, hasN1
+      cat, isArtigiano, isGS,
+      baseTassabile, casseEscluse, rimborsiN1, fatturatoLordo,
+      redditoImponibile, imposta, contributiINPS, contributiVariabili,
+      totale, accontoI, accontoII, hasCasseEscluse, hasN1
     }
   }, [cliente, fatture])
 
-  const steps = []
+  const labelBase = calc.isArtigiano ? 'Ricavi dell\'attività netti' : 'Compensi professionali netti'
+
+  const steps: { label: string; value: number; note: string; color: string; bold: boolean }[] = []
 
   steps.push({
     label: 'Totale fatturato emesso',
@@ -66,8 +94,8 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
   }
 
   steps.push({
-    label: 'Compensi professionali netti',
-    value: calc.fatturato,
+    label: labelBase,
+    value: calc.baseTassabile,
     note: 'Base di calcolo imposte',
     color: 'var(--accent)', bold: true
   })
@@ -83,12 +111,32 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
     note: 'Imposta sostitutiva',
     color: 'var(--warning)', bold: true
   })
-  steps.push({
-    label: '+ Contributi INPS fissi',
-    value: cliente.contributi_inps_fissi,
-    note: 'Importo annuo stimato',
-    color: 'var(--text2)', bold: false
-  })
+
+  if (calc.isGS) {
+    steps.push({
+      label: `+ Contributi INPS (${cliente.aliquota_inps_gs ?? 0}% reddito imponibile)`,
+      value: calc.contributiINPS,
+      note: 'Gestione separata',
+      color: 'var(--text2)', bold: false
+    })
+  } else if (calc.isArtigiano) {
+    steps.push({
+      label: '+ Contributi INPS fissi',
+      value: cliente.contributi_inps_fissi ?? 0,
+      note: 'Importo annuo fisso',
+      color: 'var(--text2)', bold: false
+    })
+    if (calc.contributiVariabili > 0) {
+      steps.push({
+        label: `+ Contributi eccedenza minimale (${cliente.aliquota_inps_eccedenza ?? 0}%)`,
+        value: calc.contributiVariabili,
+        note: `Reddito imponibile > minimale ${formatCurrency(cliente.reddito_minimale_inps ?? 0)}`,
+        color: 'var(--text2)', bold: false
+      })
+    }
+  }
+
+  const subtitleDA = calc.isGS || calc.isArtigiano ? 'Imposta + Contributi INPS' : 'Imposta sostitutiva'
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -114,14 +162,12 @@ export default function ImposteTab({ cliente, fatture }: { cliente: Cliente; fat
       </div>
 
       <div style={{
-        background: 'var(--primary)',
-        borderRadius: 'var(--radius)',
-        padding: '20px 18px',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        background: 'var(--primary)', borderRadius: 'var(--radius)',
+        padding: '20px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
       }}>
         <div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>DA ACCANTONARE</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>Imposta + Contributi INPS</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{subtitleDA}</div>
         </div>
         <div style={{ fontFamily: 'var(--mono)', fontSize: 24, fontWeight: 700, color: 'white' }}>
           {formatCurrency(calc.totale)}
