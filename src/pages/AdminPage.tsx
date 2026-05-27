@@ -137,8 +137,9 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
           <div className="form-row" style={{ marginBottom: 0 }}>
             <label>Aliquota INPS gestione separata (%)</label>
             <input type="number" step="0.01" min="0" max="100"
-              value={f.aliquota_inps_gs ?? 26.23}
-              onChange={e => setF(p => ({ ...p, aliquota_inps_gs: parseFloat(e.target.value) }))} />
+              key={String(f.aliquota_inps_gs)}
+              defaultValue={f.aliquota_inps_gs ?? 26.23}
+              onBlur={e => setF(p => ({ ...p, aliquota_inps_gs: parseFloat(e.target.value) }))} />
             <span style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
               Applicata al reddito imponibile (compenso × coefficiente)
             </span>
@@ -151,20 +152,23 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
             <div className="form-row" style={{ marginBottom: 0 }}>
               <label>Contributi fissi annui (€)</label>
               <input type="number" step="0.01" min="0"
-                value={f.contributi_inps_fissi ?? 0}
-                onChange={e => setF(p => ({ ...p, contributi_inps_fissi: parseFloat(e.target.value) }))} />
+                key={String(f.contributi_inps_fissi)}
+                defaultValue={f.contributi_inps_fissi ?? 0}
+                onBlur={e => setF(p => ({ ...p, contributi_inps_fissi: parseFloat(e.target.value) }))} />
             </div>
             <div className="form-row" style={{ marginBottom: 0 }}>
               <label>Aliquota sull'eccedenza del minimale (%)</label>
               <input type="number" step="0.01" min="0" max="100"
-                value={f.aliquota_inps_eccedenza ?? 0}
-                onChange={e => setF(p => ({ ...p, aliquota_inps_eccedenza: parseFloat(e.target.value) }))} />
+                key={String(f.aliquota_inps_eccedenza)}
+                defaultValue={f.aliquota_inps_eccedenza ?? 0}
+                onBlur={e => setF(p => ({ ...p, aliquota_inps_eccedenza: parseFloat(e.target.value) }))} />
             </div>
             <div className="form-row" style={{ marginBottom: 0 }}>
               <label>Reddito minimale INPS annuo (€)</label>
               <input type="number" step="0.01" min="0"
-                value={f.reddito_minimale_inps ?? 0}
-                onChange={e => setF(p => ({ ...p, reddito_minimale_inps: parseFloat(e.target.value) }))} />
+                key={String(f.reddito_minimale_inps)}
+                defaultValue={f.reddito_minimale_inps ?? 0}
+                onBlur={e => setF(p => ({ ...p, reddito_minimale_inps: parseFloat(e.target.value) }))} />
               <span style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
                 Stabilito annualmente dall'INPS
               </span>
@@ -207,7 +211,7 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
               <div className="form-row"><label>Codice ATECO</label><input value={form.codice_ateco || ''} onChange={e => setForm(p => ({ ...p, codice_ateco: e.target.value }))} placeholder="es. 69.20.11" /></div>
               <div className="form-row">
                 <label>Coefficiente di redditività (%)</label>
-                <input type="number" min="1" max="100" step="0.1" value={form.coefficiente_redditivita || 67} onChange={e => setForm(p => ({ ...p, coefficiente_redditivita: parseFloat(e.target.value) }))} />
+                <input type="number" min="1" max="100" step="0.1" defaultValue={form.coefficiente_redditivita || 67} onBlur={e => setForm(p => ({ ...p, coefficiente_redditivita: parseFloat(e.target.value) }))} />
                 <span style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Dipende dal codice ATECO del cliente</span>
               </div>
               <div className="form-row">
@@ -295,7 +299,7 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
               <div className="form-row"><label>Codice Fiscale</label><input value={form.codice_fiscale || ''} onChange={e => setForm(p => ({ ...p, codice_fiscale: e.target.value }))} /></div>
               <div className="form-row"><label>ATECO</label><input value={form.codice_ateco || ''} onChange={e => setForm(p => ({ ...p, codice_ateco: e.target.value }))} /></div>
               <div className="form-grid">
-                <div className="form-row"><label>Coeff. %</label><input type="number" value={form.coefficiente_redditivita || 67} onChange={e => setForm(p => ({ ...p, coefficiente_redditivita: parseFloat(e.target.value) }))} required /></div>
+                <div className="form-row"><label>Coeff. %</label><input type="number" defaultValue={form.coefficiente_redditivita || 67} onBlur={e => setForm(p => ({ ...p, coefficiente_redditivita: parseFloat(e.target.value) }))} required /></div>
                 <div className="form-row">
                   <label>Aliquota %</label>
                   <select value={form.aliquota_imposta || 15} onChange={e => setForm(p => ({ ...p, aliquota_imposta: parseFloat(e.target.value) }))}>
