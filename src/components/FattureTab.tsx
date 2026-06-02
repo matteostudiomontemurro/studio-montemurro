@@ -4,11 +4,12 @@ import { supabase, Fattura } from '../lib/supabase'
 import { parseFatturaPA, formatCurrency, formatDate, CODICI_CASSA } from '../lib/fattura'
 
 export default function FattureTab({
-  clienteId, codiceFiscale, fatture, onRefresh
+  clienteId, codiceFiscale, fatture, annoFiscale, onRefresh
 }: {
   clienteId: string
   codiceFiscale: string
   fatture: Fattura[]
+  annoFiscale: number
   onRefresh: () => void | Promise<void>
 }) {
   const [importing, setImporting] = useState(false)
@@ -25,6 +26,22 @@ export default function FattureTab({
     data_incasso: '',
   })
 
+  // Fatture da mostrare nell'anno fiscale selezionato:
+  // 1. Fatture EMESSE nell'anno selezionato (indipendentemente dallo stato)
+  // 2. Fatture emesse in anni PRECEDENTI ma non ancora incassate (visibili nell'anno corrente)
+  // 3. Fatture emesse in anni precedenti e incassate nell'anno selezionato
+  const fattureVisibili = fatture.filter(f => {
+    const annoEmissione = new Date(f.data).getFullYear()
+    const annoIncasso = f.data_incasso ? new Date(f.data_incasso).getFullYear() : null
+
+    if (annoEmissione === annoFiscale) return true  // emessa nell'anno selezionato
+    if (annoEmissione < annoFiscale) {
+      if (f.stato === 'in_attesa') return true  // non ancora incassata: visibile nell'anno corrente
+      if (annoIncasso === annoFiscale) return true  // incassata nell'anno selezionato
+    }
+    return false
+  })
+
   async function handleXmlImport(files: FileList) {
     setImporting(true)
     const res: typeof results = []
@@ -37,6 +54,16 @@ export default function FattureTab({
           res.push({ name: file.name, ok: false, msg: 'Fattura non importabile: codice fiscale cedente NON COERENTE con utente in sessione. Puoi importare solo le tue fatture.' })
           continue
         }
+      }
+
+      // Controllo anno di emissione: si possono importare solo fatture emesse nell'anno fiscale selezionato
+      const annoEmissione = parsed.data ? new Date(parsed.data).getFullYear() : null
+      if (annoEmissione && annoEmissione !== annoFiscale) {
+        res.push({
+          name: file.name, ok: false,
+          msg: `Fattura non importabile: emessa nel ${annoEmissione}, ma l'anno fiscale selezionato è il ${annoFiscale}. Seleziona l'anno corretto e riprova.`
+        })
+        continue
       }
       const { error } = await supabase.from('fatture').insert({
         cliente_id: clienteId,
@@ -82,12 +109,10 @@ export default function FattureTab({
 
   async function toggleStato(f: Fattura) {
     if (f.stato === 'incassata') {
-      // Riporta in attesa: azzera la data
       await supabase.from('fatture').update({ stato: 'in_attesa', data_incasso: null }).eq('id', f.id)
       onRefresh()
     } else {
-      // Apri il picker con data di oggi precompilata
-      setEditingIncasso({ id: f.id, data: new Date().toISOString().split('T')[0] })
+      setEditingIncasso({ id: f.id, data: f.data })
     }
   }
 
@@ -105,6 +130,15 @@ export default function FattureTab({
     if (!confirm('Eliminare questa fattura?')) return
     await supabase.from('fatture').delete().eq('id', id)
     onRefresh()
+  }
+
+  // Etichetta stato fattura con anno incasso se diverso dall'anno di emissione
+  function labelStato(f: Fattura) {
+    if (f.stato === 'in_attesa') return '⏳ In attesa'
+    const annoIncasso = f.data_incasso ? new Date(f.data_incasso).getFullYear() : null
+    const annoEmissione = new Date(f.data).getFullYear()
+    if (annoIncasso && annoIncasso !== annoEmissione) return `✓ Incassata ${annoIncasso}`
+    return '✓ Incassata'
   }
 
   return (
@@ -140,71 +174,79 @@ export default function FattureTab({
         </div>
       )}
 
-      {fatture.length === 0 ? (
+      {fattureVisibili.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text3)' }}>
           <FileText size={40} strokeWidth={1} style={{ margin: '0 auto 12px' }} />
-          <p style={{ fontSize: 14 }}>Nessuna fattura ancora</p>
+          <p style={{ fontSize: 14 }}>Nessuna fattura per il {annoFiscale}</p>
           <p style={{ fontSize: 12, marginTop: 4 }}>Importa file XML o aggiungi manualmente</p>
         </div>
       ) : (
-        fatture.map(f => (
-          <div key={f.id} className="card" style={{ padding: '12px 14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600, color: 'var(--primary)' }}>N°{f.numero}</span>
-                  <span className={`badge ${f.esclusa_da_calcolo ? 'badge-muted' : 'badge-info'}`}>{f.codice_iva}</span>
-                  {f.esclusa_da_calcolo && <span className="badge badge-muted">Esclusa N1</span>}
-                  {f.cassa_esclusa_da_calcolo && <span className="badge badge-warning">{f.tipo_cassa}</span>}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
-                  Emessa: {formatDate(f.data)} · {f.destinatario}
-                </div>
-                {f.stato === 'incassata' && f.data_incasso && (
-                  <div style={{ fontSize: 11, color: 'var(--success)', marginTop: 2 }}>
-                    Incassata: {formatDate(f.data_incasso)}
+        fattureVisibili.map(f => {
+          const annoEmissione = new Date(f.data).getFullYear()
+          const annoIncasso = f.data_incasso ? new Date(f.data_incasso).getFullYear() : null
+          const isDaAnnoPrec = annoEmissione < annoFiscale
+
+          return (
+            <div key={f.id} className="card" style={{
+              padding: '12px 14px',
+              borderLeft: isDaAnnoPrec ? '3px solid var(--warning)' : undefined
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600, color: 'var(--primary)' }}>N°{f.numero}</span>
+                    <span className={`badge ${f.esclusa_da_calcolo ? 'badge-muted' : 'badge-info'}`}>{f.codice_iva}</span>
+                    {f.esclusa_da_calcolo && <span className="badge badge-muted">Esclusa N1</span>}
+                    {f.cassa_esclusa_da_calcolo && <span className="badge badge-warning">{f.tipo_cassa}</span>}
+                    {isDaAnnoPrec && <span className="badge badge-warning">Emessa {annoEmissione}</span>}
                   </div>
-                )}
+                  <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
+                    Emessa: {formatDate(f.data)} · {f.destinatario}
+                  </div>
+                  {f.stato === 'incassata' && f.data_incasso && (
+                    <div style={{ fontSize: 11, color: 'var(--success)', marginTop: 2 }}>
+                      Incassata: {formatDate(f.data_incasso)}
+                      {annoIncasso && annoIncasso !== annoEmissione && ` (${annoIncasso})`}
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 15, color: f.esclusa_da_calcolo ? 'var(--text3)' : 'var(--text)' }}>
+                    {formatCurrency(f.compenso)}
+                  </div>
+                  {f.contributo_cassa > 0 && (
+                    <div style={{ fontSize: 11, color: f.cassa_esclusa_da_calcolo ? 'var(--warning)' : 'var(--text3)', marginTop: 1 }}>
+                      + {formatCurrency(f.contributo_cassa)} cassa
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>Tot: {formatCurrency(f.totale)}</div>
+                </div>
               </div>
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 15, color: f.esclusa_da_calcolo ? 'var(--text3)' : 'var(--text)' }}>
-                  {formatCurrency(f.compenso)}
+
+              {editingIncasso?.id === f.id && (
+                <div style={{ marginTop: 10, padding: 10, background: 'var(--bg2)', borderRadius: 'var(--radius-sm)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>Data incasso:</span>
+                  <input type="date"
+                    value={editingIncasso.data}
+                    onChange={e => setEditingIncasso(p => p ? { ...p, data: e.target.value } : null)}
+                    style={{ fontSize: 12, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontFamily: 'var(--font)' }} />
+                  <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 12 }} onClick={confirmIncasso}>Conferma</button>
+                  <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setEditingIncasso(null)}>Annulla</button>
                 </div>
-                {f.contributo_cassa > 0 && (
-                  <div style={{ fontSize: 11, color: f.cassa_esclusa_da_calcolo ? 'var(--warning)' : 'var(--text3)', marginTop: 1 }}>
-                    + {formatCurrency(f.contributo_cassa)} cassa
-                  </div>
-                )}
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Tot: {formatCurrency(f.totale)}</div>
+              )}
+
+              <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                <button className={`badge ${f.stato === 'incassata' ? 'badge-success' : 'badge-warning'}`}
+                  onClick={() => toggleStato(f)} style={{ cursor: 'pointer', border: 'none' }}>
+                  {labelStato(f)}
+                </button>
+                <button onClick={() => deleteFattura(f.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex', alignItems: 'center' }}>
+                  <X size={14} />
+                </button>
               </div>
             </div>
-
-            {/* Picker data incasso inline */}
-            {editingIncasso?.id === f.id && (
-              <div style={{ marginTop: 10, padding: 10, background: 'var(--bg2)', borderRadius: 'var(--radius-sm)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>Data incasso:</span>
-                <input type="date"
-                  value={editingIncasso.data}
-                  onChange={e => setEditingIncasso(p => p ? { ...p, data: e.target.value } : null)}
-                  style={{ fontSize: 12, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontFamily: 'var(--font)' }} />
-                <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 12 }}
-                  onClick={confirmIncasso}>Conferma</button>
-                <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
-                  onClick={() => setEditingIncasso(null)}>Annulla</button>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-              <button className={`badge ${f.stato === 'incassata' ? 'badge-success' : 'badge-warning'}`}
-                onClick={() => toggleStato(f)} style={{ cursor: 'pointer', border: 'none' }}>
-                {f.stato === 'incassata' ? '✓ Incassata' : '⏳ In attesa'}
-              </button>
-              <button onClick={() => deleteFattura(f.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex', alignItems: 'center' }}>
-                <X size={14} />
-              </button>
-            </div>
-          </div>
-        ))
+          )
+        })
       )}
 
       {showManuale && (
@@ -218,7 +260,6 @@ export default function FattureTab({
               </div>
               <div className="form-row"><label>Destinatario</label><input value={form.destinatario} onChange={e => setForm(p => ({ ...p, destinatario: e.target.value }))} required /></div>
               <div className="form-row"><label>Compenso professionale €</label><input type="number" step="0.01" value={form.compenso} onChange={e => setForm(p => ({ ...p, compenso: e.target.value }))} required /></div>
-
               <div style={{ background: 'var(--bg3)', borderRadius: 'var(--radius-sm)', padding: 12, marginBottom: 14 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cassa previdenziale (opzionale)</div>
                 <div className="form-row" style={{ marginBottom: 10 }}>
@@ -240,7 +281,6 @@ export default function FattureTab({
                   </div>
                 )}
               </div>
-
               <div className="form-grid">
                 <div className="form-row">
                   <label>Codice IVA</label>
@@ -260,14 +300,12 @@ export default function FattureTab({
                   </select>
                 </div>
               </div>
-
               {form.stato === 'incassata' && (
                 <div className="form-row">
                   <label>Data incasso</label>
                   <input type="date" value={form.data_incasso} onChange={e => setForm(p => ({ ...p, data_incasso: e.target.value }))} />
                 </div>
               )}
-
               <div className="form-row">
                 <label>Totale fattura €</label>
                 <input type="number" step="0.01" value={form.totale} onChange={e => setForm(p => ({ ...p, totale: e.target.value }))} placeholder="Lascia vuoto = auto" />

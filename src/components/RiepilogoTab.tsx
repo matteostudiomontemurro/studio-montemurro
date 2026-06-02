@@ -3,28 +3,24 @@ import { TrendingUp, FileText, Euro, PiggyBank } from 'lucide-react'
 import { Cliente, Fattura } from '../lib/supabase'
 import { formatCurrency } from '../lib/fattura'
 
-export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; fatture: Fattura[] }) {
-  const annoCorrente = new Date().getFullYear()
-
+export default function RiepilogoTab({ cliente, fatture, annoFiscale }: {
+  cliente: Cliente
+  fatture: Fattura[]
+  annoFiscale: number
+}) {
   const stats = useMemo(() => {
     const cat = cliente.categoria_previdenziale ?? 'ordine'
     const isArtigiano = cat === 'inps_ac'
     const isGS = cat === 'inps_gs'
 
-    // Solo fatture incassate nell'anno corrente (principio di cassa)
     const fattureAnno = fatture.filter(f => {
       if (f.stato !== 'incassata') return false
       const dataRif = f.data_incasso || f.data
-      return new Date(dataRif).getFullYear() === annoCorrente
+      return new Date(dataRif).getFullYear() === annoFiscale
     })
 
-    const fatturato = fattureAnno.reduce((s, f) =>
-      s + f.compenso + (f.cassa_esclusa_da_calcolo ? 0 : f.contributo_cassa), 0)
-
-    const totaleCasseEscluse = fattureAnno
-      .filter(f => f.cassa_esclusa_da_calcolo)
-      .reduce((s, f) => s + f.contributo_cassa, 0)
-
+    const fatturato = fattureAnno.reduce((s, f) => s + f.compenso + (f.cassa_esclusa_da_calcolo ? 0 : f.contributo_cassa), 0)
+    const totaleCasseEscluse = fattureAnno.filter(f => f.cassa_esclusa_da_calcolo).reduce((s, f) => s + f.contributo_cassa, 0)
     const redditoImponibile = fatturato * (cliente.coefficiente_redditivita / 100)
     const imposta = redditoImponibile * (cliente.aliquota_imposta / 100)
 
@@ -44,18 +40,14 @@ export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; f
     const inAttesa = fatture.filter(f => f.stato === 'in_attesa').length
     const hasCassaEsclusa = fattureAnno.some(f => f.cassa_esclusa_da_calcolo)
 
-    return {
-      isArtigiano, isGS,
-      fatturato, totaleCasseEscluse, redditoImponibile, imposta,
-      contributiINPS, totaleImposte, incassateAnno, inAttesa, hasCassaEsclusa
-    }
-  }, [cliente, fatture, annoCorrente])
+    return { isArtigiano, isGS, fatturato, totaleCasseEscluse, redditoImponibile, imposta, contributiINPS, totaleImposte, incassateAnno, inAttesa, hasCassaEsclusa }
+  }, [cliente, fatture, annoFiscale])
 
   const labelBase = stats.isArtigiano ? "Ricavi dell'attività" : 'Compensi professionali'
   const noteDA = stats.isGS || stats.isArtigiano ? 'Imposta + INPS' : 'Imposta sostitutiva'
 
   const kpis = [
-    { label: labelBase, value: formatCurrency(stats.fatturato), icon: Euro, color: 'var(--accent)', note: `Incassati ${annoCorrente}` },
+    { label: labelBase, value: formatCurrency(stats.fatturato), icon: Euro, color: 'var(--accent)', note: `Incassati ${annoFiscale}` },
     { label: 'Reddito imponibile', value: formatCurrency(stats.redditoImponibile), icon: TrendingUp, color: 'var(--primary)', note: `Coeff. ${cliente.coefficiente_redditivita}%` },
     { label: 'Imposta sostitutiva', value: formatCurrency(stats.imposta), icon: PiggyBank, color: 'var(--warning)', note: `Aliquota ${cliente.aliquota_imposta}%` },
     { label: 'Da accantonare', value: formatCurrency(stats.totaleImposte), icon: FileText, color: 'var(--primary)', note: noteDA },
@@ -66,7 +58,7 @@ export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; f
       <div style={{ marginBottom: 4 }}>
         <h2 style={{ fontSize: 17, fontWeight: 600 }}>Ciao, {cliente.nome} 👋</h2>
         <p style={{ color: 'var(--text2)', fontSize: 13, marginTop: 2 }}>
-          Anno fiscale {annoCorrente} · Regime forfettario
+          Anno fiscale {annoFiscale} · Regime forfettario
         </p>
       </div>
 
@@ -86,14 +78,12 @@ export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; f
       {stats.hasCassaEsclusa && (
         <div className="card" style={{ background: '#fffbf0', borderColor: '#f0d080' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--warning)', marginBottom: 4 }}>⚠ Contributi cassa previdenziale esclusi</div>
-          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
-            {formatCurrency(stats.totaleCasseEscluse)} di contributi integrativi non concorrono al reddito imponibile
-          </div>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>{formatCurrency(stats.totaleCasseEscluse)} di contributi integrativi non concorrono al reddito imponibile</div>
         </div>
       )}
 
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ color: 'var(--text2)', fontSize: 13 }}>Fatture {annoCorrente}</span>
+        <span style={{ color: 'var(--text2)', fontSize: 13 }}>Fatture {annoFiscale}</span>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="badge badge-success">{stats.incassateAnno} incassate</span>
           <span className="badge badge-warning">{stats.inAttesa} in attesa</span>
@@ -107,9 +97,7 @@ export default function RiepilogoTab({ cliente, fatture }: { cliente: Cliente; f
         </div>
       )}
 
-      <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', marginTop: 4 }}>
-        Parametri fiscali impostati dal Dott. Montemurro
-      </p>
+      <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', marginTop: 4 }}>Parametri fiscali impostati dal Dott. Montemurro</p>
     </div>
   )
 }
