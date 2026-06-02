@@ -91,20 +91,19 @@ export default function DashboardPage({ userId, onLogout }: { userId: string; on
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* Selettore anno fiscale globale */}
-          <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 8, padding: '4px 8px' }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>Anno</span>
             <select
               value={annoFiscale}
               onChange={e => setAnnoFiscale(parseInt(e.target.value))}
               style={{
-                appearance: 'none', background: 'rgba(255,255,255,0.15)',
-                border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8,
-                color: 'white', fontSize: 13, fontWeight: 600,
-                padding: '5px 24px 5px 10px', cursor: 'pointer',
-                fontFamily: 'var(--font)'
+                background: 'transparent', border: 'none', outline: 'none',
+                color: 'white', fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', fontFamily: 'var(--font)', padding: 0
               }}>
-              {anniDisponibili.map(a => <option key={a} value={a} style={{ color: 'var(--text)', background: 'white' }}>{a}</option>)}
+              {anniDisponibili.map(a => <option key={a} value={a} style={{ color: '#07243e', background: 'white', fontWeight: 600 }}>{a}</option>)}
             </select>
-            <ChevronDown size={13} color="white" style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <ChevronDown size={12} color="rgba(255,255,255,0.8)" />
           </div>
           <button onClick={onLogout} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', display: 'flex', padding: 4 }}>
             <LogOut size={18} />
