@@ -227,7 +227,7 @@ export default function AdminPage({ onLogout }: { onLogout: () => void }) {
               </button>
             </form>
           )}
-          {activeTab === 'fatture' && <FattureTab clienteId={selected.id} codiceFiscale={selected.codice_fiscale ?? ''} fatture={fatture} onRefresh={refreshData} />}
+          {activeTab === 'fatture' && <FattureTab clienteId={selected.id} codiceFiscale={selected.codice_fiscale ?? ''} fatture={fatture} annoFiscale={new Date().getFullYear()} onRefresh={refreshData} />}
           {activeTab === 'documenti' && <DocumentiTab clienteId={selected.id} documenti={documenti} isAdmin={true} onRefresh={refreshData} />}
         </div>
       </div>
