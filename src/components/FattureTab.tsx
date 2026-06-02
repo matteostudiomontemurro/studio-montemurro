@@ -15,7 +15,7 @@ export default function FattureTab({
   const [results, setResults] = useState<{ name: string; ok: boolean; msg: string }[]>([])
   const [showResults, setShowResults] = useState(false)
   const [showManuale, setShowManuale] = useState(false)
-  const [editingIncasso, setEditingIncasso] = useState<string | null>(null) // id fattura in editing
+  const [editingIncasso, setEditingIncasso] = useState<{ id: string; data: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
@@ -81,22 +81,22 @@ export default function FattureTab({
   }
 
   async function toggleStato(f: Fattura) {
-    const nuovoStato = f.stato === 'incassata' ? 'in_attesa' : 'incassata'
-    if (nuovoStato === 'incassata') {
-      // Quando si segna come incassata, apri il picker per la data
-      setEditingIncasso(f.id)
-    } else {
-      // Quando si riporta in attesa, azzera la data
+    if (f.stato === 'incassata') {
+      // Riporta in attesa: azzera la data
       await supabase.from('fatture').update({ stato: 'in_attesa', data_incasso: null }).eq('id', f.id)
       onRefresh()
+    } else {
+      // Apri il picker con data di oggi precompilata
+      setEditingIncasso({ id: f.id, data: new Date().toISOString().split('T')[0] })
     }
   }
 
-  async function confirmIncasso(fatturaId: string, dataIncasso: string) {
+  async function confirmIncasso() {
+    if (!editingIncasso) return
     await supabase.from('fatture').update({
       stato: 'incassata',
-      data_incasso: dataIncasso || new Date().toISOString().split('T')[0]
-    }).eq('id', fatturaId)
+      data_incasso: editingIncasso.data || new Date().toISOString().split('T')[0]
+    }).eq('id', editingIncasso.id)
     setEditingIncasso(null)
     onRefresh()
   }
@@ -180,17 +180,15 @@ export default function FattureTab({
             </div>
 
             {/* Picker data incasso inline */}
-            {editingIncasso === f.id && (
+            {editingIncasso?.id === f.id && (
               <div style={{ marginTop: 10, padding: 10, background: 'var(--bg2)', borderRadius: 'var(--radius-sm)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>Data incasso:</span>
-                <input type="date" defaultValue={new Date().toISOString().split('T')[0]}
-                  id={`incasso-${f.id}`}
+                <input type="date"
+                  value={editingIncasso.data}
+                  onChange={e => setEditingIncasso(p => p ? { ...p, data: e.target.value } : null)}
                   style={{ fontSize: 12, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontFamily: 'var(--font)' }} />
                 <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 12 }}
-                  onClick={() => {
-                    const el = document.getElementById(`incasso-${f.id}`) as HTMLInputElement
-                    confirmIncasso(f.id, el?.value || '')
-                  }}>Conferma</button>
+                  onClick={confirmIncasso}>Conferma</button>
                 <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
                   onClick={() => setEditingIncasso(null)}>Annulla</button>
               </div>
