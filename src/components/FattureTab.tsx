@@ -7,7 +7,7 @@ export default function FattureTab({
   clienteId, codiceFiscale, fatture, onRefresh
 }: {
   clienteId: string
-  codiceFiscale: string   // CF del cliente, per verifica cedente sull'XML
+  codiceFiscale: string
   fatture: Fattura[]
   onRefresh: () => void | Promise<void>
 }) {
@@ -15,12 +15,14 @@ export default function FattureTab({
   const [results, setResults] = useState<{ name: string; ok: boolean; msg: string }[]>([])
   const [showResults, setShowResults] = useState(false)
   const [showManuale, setShowManuale] = useState(false)
+  const [editingIncasso, setEditingIncasso] = useState<string | null>(null) // id fattura in editing
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
     numero: '', data: '', destinatario: '',
     compenso: '', contributo_cassa: '', tipo_cassa: '',
-    codice_iva: 'N4', totale: '', stato: 'in_attesa' as 'incassata' | 'in_attesa'
+    codice_iva: 'N4', totale: '', stato: 'in_attesa' as 'incassata' | 'in_attesa',
+    data_incasso: '',
   })
 
   async function handleXmlImport(files: FileList) {
@@ -29,41 +31,20 @@ export default function FattureTab({
     for (const file of Array.from(files)) {
       const text = await file.text()
       const parsed = parseFatturaPA(text)
-
-      if (parsed.errore) {
-        res.push({ name: file.name, ok: false, msg: parsed.errore })
-        continue
-      }
-
-      // Controllo: il CF del cedente nell'XML deve corrispondere al CF del cliente loggato.
-      // Se codiceFiscale è vuoto (es. admin senza CF impostato) il controllo viene saltato.
+      if (parsed.errore) { res.push({ name: file.name, ok: false, msg: parsed.errore }); continue }
       if (parsed.cedente_cf && codiceFiscale) {
-        const cfXml = parsed.cedente_cf.toUpperCase().trim()
-        const cfCliente = codiceFiscale.toUpperCase().trim()
-        if (cfXml !== cfCliente) {
-          res.push({
-            name: file.name,
-            ok: false,
-            msg: 'Fattura non importabile: codice fiscale cedente NON COERENTE con utente in sessione. Puoi importare solo le tue fatture.',
-          })
+        if (parsed.cedente_cf.toUpperCase().trim() !== codiceFiscale.toUpperCase().trim()) {
+          res.push({ name: file.name, ok: false, msg: 'Fattura non importabile: codice fiscale cedente NON COERENTE con utente in sessione. Puoi importare solo le tue fatture.' })
           continue
         }
       }
-
       const { error } = await supabase.from('fatture').insert({
         cliente_id: clienteId,
-        numero: parsed.numero,
-        data: parsed.data,
-        destinatario: parsed.destinatario,
-        compenso: parsed.compenso,
-        contributo_cassa: parsed.contributo_cassa,
-        tipo_cassa: parsed.tipo_cassa,
-        cassa_esclusa_da_calcolo: parsed.cassa_esclusa_da_calcolo,
-        imponibile: parsed.imponibile,
-        codice_iva: parsed.codice_iva,
-        totale: parsed.totale,
-        stato: 'in_attesa',
-        esclusa_da_calcolo: parsed.esclusa_da_calcolo,
+        numero: parsed.numero, data: parsed.data, destinatario: parsed.destinatario,
+        compenso: parsed.compenso, contributo_cassa: parsed.contributo_cassa,
+        tipo_cassa: parsed.tipo_cassa, cassa_esclusa_da_calcolo: parsed.cassa_esclusa_da_calcolo,
+        imponibile: parsed.imponibile, codice_iva: parsed.codice_iva, totale: parsed.totale,
+        stato: 'in_attesa', data_incasso: null, esclusa_da_calcolo: parsed.esclusa_da_calcolo,
       })
       if (error) {
         res.push({ name: file.name, ok: false, msg: error.message })
@@ -73,14 +54,10 @@ export default function FattureTab({
           msg += ` · Cassa ${parsed.tipo_cassa}: ${formatCurrency(parsed.contributo_cassa)}`
           if (parsed.cassa_esclusa_da_calcolo) msg += ' (esclusa)'
         }
-        if (parsed.esclusa_da_calcolo) msg += ' · Fattura N1 esclusa'
         res.push({ name: file.name, ok: true, msg })
       }
     }
-    setResults(res)
-    setShowResults(true)
-    setImporting(false)
-    onRefresh()
+    setResults(res); setShowResults(true); setImporting(false); onRefresh()
   }
 
   async function handleManualeSubmit(e: React.FormEvent) {
@@ -88,31 +65,39 @@ export default function FattureTab({
     const compenso = parseFloat(form.compenso) || 0
     const contributo_cassa = parseFloat(form.contributo_cassa) || 0
     const cassa_esclusa = form.tipo_cassa !== '' && form.tipo_cassa !== 'TC22'
-    const imponibile = compenso + (cassa_esclusa ? contributo_cassa : contributo_cassa)
+    const imponibile = compenso + contributo_cassa
     const totale = parseFloat(form.totale) || imponibile
-
+    const stato = form.stato as 'incassata' | 'in_attesa'
     await supabase.from('fatture').insert({
-      cliente_id: clienteId,
-      numero: form.numero,
-      data: form.data,
-      destinatario: form.destinatario,
-      compenso,
-      contributo_cassa,
-      tipo_cassa: form.tipo_cassa,
-      cassa_esclusa_da_calcolo: cassa_esclusa,
-      imponibile,
-      codice_iva: form.codice_iva,
-      totale,
-      stato: form.stato,
+      cliente_id: clienteId, numero: form.numero, data: form.data, destinatario: form.destinatario,
+      compenso, contributo_cassa, tipo_cassa: form.tipo_cassa, cassa_esclusa_da_calcolo: cassa_esclusa,
+      imponibile, codice_iva: form.codice_iva, totale, stato,
+      data_incasso: stato === 'incassata' && form.data_incasso ? form.data_incasso : null,
       esclusa_da_calcolo: form.codice_iva === 'N1',
     })
     setShowManuale(false)
-    setForm({ numero: '', data: '', destinatario: '', compenso: '', contributo_cassa: '', tipo_cassa: '', codice_iva: 'N4', totale: '', stato: 'in_attesa' })
+    setForm({ numero: '', data: '', destinatario: '', compenso: '', contributo_cassa: '', tipo_cassa: '', codice_iva: 'N4', totale: '', stato: 'in_attesa', data_incasso: '' })
     onRefresh()
   }
 
   async function toggleStato(f: Fattura) {
-    await supabase.from('fatture').update({ stato: f.stato === 'incassata' ? 'in_attesa' : 'incassata' }).eq('id', f.id)
+    const nuovoStato = f.stato === 'incassata' ? 'in_attesa' : 'incassata'
+    if (nuovoStato === 'incassata') {
+      // Quando si segna come incassata, apri il picker per la data
+      setEditingIncasso(f.id)
+    } else {
+      // Quando si riporta in attesa, azzera la data
+      await supabase.from('fatture').update({ stato: 'in_attesa', data_incasso: null }).eq('id', f.id)
+      onRefresh()
+    }
+  }
+
+  async function confirmIncasso(fatturaId: string, dataIncasso: string) {
+    await supabase.from('fatture').update({
+      stato: 'incassata',
+      data_incasso: dataIncasso || new Date().toISOString().split('T')[0]
+    }).eq('id', fatturaId)
+    setEditingIncasso(null)
     onRefresh()
   }
 
@@ -140,9 +125,7 @@ export default function FattureTab({
         <div className="card" style={{ padding: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>Risultati importazione</span>
-            <button onClick={() => setShowResults(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
-              <X size={14} />
-            </button>
+            <button onClick={() => setShowResults(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}><X size={14} /></button>
           </div>
           {results.map((r, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
@@ -174,7 +157,14 @@ export default function FattureTab({
                   {f.esclusa_da_calcolo && <span className="badge badge-muted">Esclusa N1</span>}
                   {f.cassa_esclusa_da_calcolo && <span className="badge badge-warning">{f.tipo_cassa}</span>}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{formatDate(f.data)} · {f.destinatario}</div>
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
+                  Emessa: {formatDate(f.data)} · {f.destinatario}
+                </div>
+                {f.stato === 'incassata' && f.data_incasso && (
+                  <div style={{ fontSize: 11, color: 'var(--success)', marginTop: 2 }}>
+                    Incassata: {formatDate(f.data_incasso)}
+                  </div>
+                )}
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 15, color: f.esclusa_da_calcolo ? 'var(--text3)' : 'var(--text)' }}>
@@ -188,6 +178,24 @@ export default function FattureTab({
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>Tot: {formatCurrency(f.totale)}</div>
               </div>
             </div>
+
+            {/* Picker data incasso inline */}
+            {editingIncasso === f.id && (
+              <div style={{ marginTop: 10, padding: 10, background: 'var(--bg2)', borderRadius: 'var(--radius-sm)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>Data incasso:</span>
+                <input type="date" defaultValue={new Date().toISOString().split('T')[0]}
+                  id={`incasso-${f.id}`}
+                  style={{ fontSize: 12, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 6, fontFamily: 'var(--font)' }} />
+                <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 12 }}
+                  onClick={() => {
+                    const el = document.getElementById(`incasso-${f.id}`) as HTMLInputElement
+                    confirmIncasso(f.id, el?.value || '')
+                  }}>Conferma</button>
+                <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+                  onClick={() => setEditingIncasso(null)}>Annulla</button>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
               <button className={`badge ${f.stato === 'incassata' ? 'badge-success' : 'badge-warning'}`}
                 onClick={() => toggleStato(f)} style={{ cursor: 'pointer', border: 'none' }}>
@@ -208,7 +216,7 @@ export default function FattureTab({
             <form onSubmit={handleManualeSubmit}>
               <div className="form-grid">
                 <div className="form-row"><label>N° Fattura</label><input value={form.numero} onChange={e => setForm(p => ({ ...p, numero: e.target.value }))} required /></div>
-                <div className="form-row"><label>Data</label><input type="date" value={form.data} onChange={e => setForm(p => ({ ...p, data: e.target.value }))} required /></div>
+                <div className="form-row"><label>Data emissione</label><input type="date" value={form.data} onChange={e => setForm(p => ({ ...p, data: e.target.value }))} required /></div>
               </div>
               <div className="form-row"><label>Destinatario</label><input value={form.destinatario} onChange={e => setForm(p => ({ ...p, destinatario: e.target.value }))} required /></div>
               <div className="form-row"><label>Compenso professionale €</label><input type="number" step="0.01" value={form.compenso} onChange={e => setForm(p => ({ ...p, compenso: e.target.value }))} required /></div>
@@ -254,6 +262,14 @@ export default function FattureTab({
                   </select>
                 </div>
               </div>
+
+              {form.stato === 'incassata' && (
+                <div className="form-row">
+                  <label>Data incasso</label>
+                  <input type="date" value={form.data_incasso} onChange={e => setForm(p => ({ ...p, data_incasso: e.target.value }))} />
+                </div>
+              )}
+
               <div className="form-row">
                 <label>Totale fattura €</label>
                 <input type="number" step="0.01" value={form.totale} onChange={e => setForm(p => ({ ...p, totale: e.target.value }))} placeholder="Lascia vuoto = auto" />
